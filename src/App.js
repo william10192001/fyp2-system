@@ -1,25 +1,100 @@
-import logo from './logo.svg';
-import './App.css';
+import React, { useState, useEffect } from "react";
+import Login from "./components/Login";
+import Register from "./components/Register";
+import Layout from "./components/Layout";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import ForgotPassword from "./components/ForgotPassword";
+import ResetPassword from "./components/ResetPassword";
 
-function App() {
+function AppWrapper() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
   );
 }
 
-export default App;
+function App() {
+  const navigate = useNavigate();
+
+  const [user, setUser] = useState(null);
+  const [candidates, setCandidates] = useState([]);
+
+  useEffect(() => {
+    const savedUser = localStorage.getItem("user");
+    if (savedUser) setUser(JSON.parse(savedUser));
+  }, []);
+
+  useEffect(() => {
+    fetch("http://localhost:5000/candidates")
+      .then(res => res.json())
+      .then(data => setCandidates(data))
+      .catch(() => setCandidates([]));
+  }, []);
+
+  const register = async (data) => {
+    const res = await fetch("http://localhost:5000/register", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(data)
+    });
+
+    const result = await res.json();
+    if (!res.ok) return alert(result.msg);
+
+    alert("Register success ✅");
+    navigate("/login");
+  };
+
+  const login = async (email, password) => {
+    const res = await fetch("http://localhost:5000/login", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ email, password })
+    });
+
+    const data = await res.json();
+    if (!res.ok) return alert(data.msg);
+
+    localStorage.setItem("token", data.token);
+    localStorage.setItem("user", JSON.stringify(data.user));
+
+    setUser(data.user);
+    navigate("/app");
+  };
+
+  const logout = () => {
+    localStorage.clear();
+    setUser(null);
+    navigate("/login");
+  };
+
+  return (
+    <Routes>
+
+      <Route path="/" element={<Navigate to="/login" />} />
+
+      <Route path="/login" element={
+        <Login onLogin={login} goRegister={() => navigate("/register")} />
+      } />
+
+      <Route path="/register" element={
+        <Register onRegister={register} goLogin={() => navigate("/login")} />
+      } />
+
+      <Route path="/forgot" element={<ForgotPassword />} />
+      <Route path="/reset/:token" element={<ResetPassword />} />
+
+      <Route path="/app" element={
+        user ? (
+          <Layout user={user} logout={logout} candidates={candidates} />
+        ) : (
+          <Navigate to="/login" />
+        )
+      } />
+
+    </Routes>
+  );
+}
+
+export default AppWrapper;

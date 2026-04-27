@@ -2,7 +2,39 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+	<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Inter', 'sans-serif'],
+          heading: ['Outfit', 'sans-serif'],
+        },
+        colors: {
+          primary: {
+            50: '#eff6ff',
+            100: '#dbeafe',
+            200: '#bfdbfe',
+            300: '#93c5fd',
+            400: '#60a5fa',
+            500: '#3b82f6',
+            600: '#2563eb',
+            700: '#1d4ed8',
+          },
+          brand: {
+            dark: '#0f172a',
+            accent: '#8b5cf6',
+          }
+        }
+      }
+    }
+  }
+</script>
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#000000" />
     <meta
@@ -24,6 +56,7 @@
       work correctly both with client-side routing and a non-root public URL.
       Learn how to configure a non-root public URL by running `npm run build`.
     -->
+<script src="https://cdn.tailwindcss.com"></script>
     <title>React App</title>
   </head>
   <body>
