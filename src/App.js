@@ -26,14 +26,14 @@ function App() {
   }, []);
 
   useEffect(() => {
-    fetch("http://localhost:5000/candidates")
+    fetch("https://fyp2-backend-gihc.onrender.com/candidates")
       .then(res => res.json())
       .then(data => setCandidates(data))
       .catch(() => setCandidates([]));
   }, []);
 
   const register = async (data) => {
-    const res = await fetch("http://localhost:5000/register", {
+    const res = await fetch("https://fyp2-backend-gihc.onrender.com/register", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(data)
@@ -47,7 +47,7 @@ function App() {
   };
 
   const login = async (email, password) => {
-    const res = await fetch("http://localhost:5000/login", {
+    const res = await fetch("https://fyp2-backend-gihc.onrender.com/login", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({ email, password })

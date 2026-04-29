@@ -10,7 +10,7 @@ function CandidateProfile({ user }) {
   });
 
   useEffect(() => {
-    fetch("http://localhost:5000/candidates")
+    fetch("https://fyp2-backend-gihc.onrender.com/candidates")
       .then(res => res.json())
       .then(data => {
         const me = data.find(u => u.email === user.email);
@@ -27,7 +27,7 @@ function CandidateProfile({ user }) {
   }, [user]);
 
   const save = async () => {
-    await fetch("http://localhost:5000/profile", {
+    await fetch("https://fyp2-backend-gihc.onrender.com/profile", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({ ...form, email: user.email })
