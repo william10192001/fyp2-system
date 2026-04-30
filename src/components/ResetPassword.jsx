@@ -6,7 +6,7 @@ function ResetPassword() {
   const [password, setPassword] = useState("");
 
   const submit = async () => {
-    const res = await fetch(`http://localhost:5000/reset-password/${token}`, {
+    const res = await fetch(`https://fyp2-backend-gihc.onrender.com/reset-password/${token}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"

@@ -11,7 +11,7 @@ function Profile({ user }) {
   });
 
   const save = async () => {
-    await fetch("http://localhost:5000/profile", {
+    await fetch("https://fyp2-backend-gihc.onrender.com/profile", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"

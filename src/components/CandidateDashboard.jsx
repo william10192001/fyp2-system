@@ -13,10 +13,10 @@ function CandidateDashboard({ user, candidates = [] }) {
 
   return (
     <>
-      {/* 🔥 Profile */}
+      {/* Profile */}
       <CandidateProfile user={user} />
 
-      {/* 🔥 Dashboard */}
+      {/* Dashboard */}
       <div className="p-6 text-white">
         <h2 className="text-xl mb-4">Candidate Dashboard</h2>
 
