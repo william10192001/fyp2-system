@@ -17,7 +17,11 @@ function ResetPassword() {
     const data = await res.json();
     alert(data.msg);
 
-    window.location.href = "/";
+import { useNavigate } from "react-router-dom";
+
+const navigate = useNavigate();
+
+navigate("/");
   };
 
   return (
