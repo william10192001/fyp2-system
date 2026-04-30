@@ -26,16 +26,18 @@ function CandidateProfile({ user, refresh }) {
       });
   }, [user]);
 
-  cconst save = async () => {
-  await fetch("https://fyp2-backend-gihc.onrender.com/profile", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ ...form, email: user.email })
-  });
+  const save = async () => {
+    await fetch("https://fyp2-backend-gihc.onrender.com/profile", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ ...form, email: user.email })
+    });
 
-  alert("Saved ✅");
-  refresh();
-};
+    alert("Saved ✅");
+
+    // 🔥 正确位置
+    if (refresh) refresh();
+  };
 
   return (
     <div className="p-6 text-white">
