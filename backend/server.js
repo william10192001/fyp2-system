@@ -113,54 +113,21 @@ app.post("/login", async (req, res) => {
 app.post("/forgot-password", async (req, res) => {
   const { email } = req.body;
 
-  console.log("📩 EMAIL INPUT:", email);
+  console.log("Forgot password:", email);
 
   try {
+    // 假设你用 mongoose
     const user = await User.findOne({ email });
 
-    // ❌ 不存在直接挡掉
     if (!user) {
-      console.log("❌ EMAIL NOT FOUND:", email);
-      return res.status(400).json({ msg: "Email not registered" });
+      return res.status(404).json({ msg: "User not found" });
     }
 
-    // 🔥 token
-    const resetToken = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "10m" }
-    );
-
-    const resetLink = `${process.env.FRONTEND_URL}/reset/${resetToken}`;
-
-    console.log("🔗 RESET LINK:", resetLink);
-
-    // 🔥 邮件
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-      }
-    });
-
-    await transporter.sendMail({
-      from: `"AI Recruit System" <${process.env.EMAIL_USER}>`,
-      to: email, // ✅ 只发给输入的email
-      subject: "Reset Password",
-      html: `
-        <h3>Password Reset</h3>
-        <p>Click link below:</p>
-        <a href="${resetLink}">${resetLink}</a>
-      `
-    });
-
-    console.log("✅ EMAIL SENT TO:", email);
-
-    res.json({ msg: "Email sent ✅" });
+    // 先做测试用（不发邮件）
+    res.json({ msg: "Reset link sent (mock)" });
 
   } catch (err) {
-    console.log("🔥 FORGOT ERROR:", err);
+    console.error(err);
     res.status(500).json({ msg: "Server error" });
   }
 });
