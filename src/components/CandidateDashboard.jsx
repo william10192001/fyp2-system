@@ -1,20 +1,26 @@
 ﻿import React, { useEffect, useState } from "react";
 import CandidateProfile from "./CandidateProfile";
 
-function CandidateDashboard({ user, candidates = [] }) {
+function CandidateDashboard({ user }) {
   const [myData, setMyData] = useState(null);
 
-  useEffect(() => {
-    if (!candidates || candidates.length === 0) return;
+  const fetchMyData = () => {
+    fetch("https://fyp2-backend-gihc.onrender.com/candidates")
+      .then(res => res.json())
+      .then(data => {
+        const found = data.find(c => c.email === user.email);
+        setMyData(found);
+      });
+  };
 
-    const found = candidates.find(c => c.email === user.email);
-    setMyData(found);
-  }, [candidates, user]);
+  useEffect(() => {
+    fetchMyData();
+  }, [user]);
 
   return (
     <>
       {/* Profile */}
-      <CandidateProfile user={user} />
+      <CandidateProfile user={user} refresh={fetchMyData} />
 
       {/* Dashboard */}
       <div className="p-6 text-white">
