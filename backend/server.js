@@ -14,16 +14,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-/* =========================
-   MongoDB
-========================= */
+/* MongoDB */
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB Connected ✅"))
   .catch(err => console.log(err));
 
-/* =========================
-   Mail
-========================= */
+/* Mail */
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -32,29 +28,20 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-/* =========================
-   Register
-========================= */
+/* Register */
 app.post("/register", async (req, res) => {
   const { email, password, role } = req.body;
 
-  try {
-    const exists = await User.findOne({ email });
-    if (exists) return res.status(400).json({ msg: "User exists" });
+  const exists = await User.findOne({ email });
+  if (exists) return res.status(400).json({ msg: "User exists" });
 
-    const hashed = await bcrypt.hash(password, 10);
+  const hashed = await bcrypt.hash(password, 10);
+  await new User({ email, password: hashed, role }).save();
 
-    await new User({ email, password: hashed, role }).save();
-
-    res.json({ msg: "Registered" });
-  } catch (err) {
-    res.status(500).json({ msg: "Error" });
-  }
+  res.json({ msg: "Registered" });
 });
 
-/* =========================
-   Login
-========================= */
+/* Login */
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
@@ -66,81 +53,60 @@ app.post("/login", async (req, res) => {
 
   const token = jwt.sign(
     { id: user._id, role: user.role },
-    process.env.JWT_SECRET,
-    { expiresIn: "7d" }
+    process.env.JWT_SECRET
   );
 
-  res.json({
-    token,
-    user: { email: user.email, role: user.role }
-  });
+  res.json({ token, user: { email: user.email, role: user.role } });
 });
 
-/* =========================
-   Forgot Password
-========================= */
+/* Forgot Password */
 app.post("/forgot-password", async (req, res) => {
   const { email } = req.body;
 
-  try {
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ msg: "User not found" });
+  const user = await User.findOne({ email });
+  if (!user) return res.status(404).json({ msg: "User not found" });
 
-    const token = crypto.randomBytes(32).toString("hex");
+  const token = crypto.randomBytes(32).toString("hex");
 
-    user.resetToken = token;
-    user.resetTokenExpiry = Date.now() + 1000 * 60 * 15;
-    await user.save();
+  user.resetToken = token;
+  user.resetTokenExpiry = Date.now() + 1000 * 60 * 15;
+  await user.save();
 
-    const link = `${process.env.FRONTEND_URL}/reset/${token}`;
+  const link = `${process.env.FRONTEND_URL}/reset/${token}`;
 
-    await transporter.sendMail({
-      to: user.email,
-      subject: "Reset Password",
-      html: `<a href="${link}">Reset Password</a>`
-    });
+  await transporter.sendMail({
+    to: user.email,
+    subject: "Reset Password",
+    html: `<a href="${link}">${link}</a>`
+  });
 
-    console.log("📧 Email sent to:", user.email);
+  console.log("📧 Email sent to:", user.email);
 
-    res.json({ msg: "Email sent ✅" });
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ msg: "Error" });
-  }
+  res.json({ msg: "Email sent ✅" });
 });
 
-/* =========================
-   Reset Password
-========================= */
+/* Reset Password */
 app.post("/reset-password/:token", async (req, res) => {
   const { token } = req.params;
   const { password } = req.body;
 
-  try {
-    const user = await User.findOne({
-      resetToken: token,
-      resetTokenExpiry: { $gt: Date.now() }
-    });
+  const user = await User.findOne({
+    resetToken: token,
+    resetTokenExpiry: { $gt: Date.now() }
+  });
 
-    if (!user) return res.status(400).json({ msg: "Invalid token" });
+  if (!user) return res.status(400).json({ msg: "Invalid token" });
 
-    user.password = await bcrypt.hash(password, 10);
-    user.resetToken = undefined;
-    user.resetTokenExpiry = undefined;
+  user.password = await bcrypt.hash(password, 10);
+  user.resetToken = undefined;
+  user.resetTokenExpiry = undefined;
 
-    await user.save();
+  await user.save();
 
-    res.json({ msg: "Password reset success ✅" });
-
-  } catch (err) {
-    res.status(500).json({ msg: "Error" });
-  }
+  res.json({ msg: "Password reset success" });
 });
 
-/* =========================
-   Profile
-========================= */
+/* Profile */
 app.post("/profile", async (req, res) => {
   const { email, name, phone, skills, experience, education } = req.body;
 
@@ -149,26 +115,21 @@ app.post("/profile", async (req, res) => {
     { name, phone, skills, experience, education }
   );
 
-  res.json({ msg: "Profile saved" });
+  res.json({ msg: "Saved" });
 });
 
-/* =========================
-   Candidates
-========================= */
+/* Candidates */
 app.get("/candidates", async (req, res) => {
   const users = await User.find({ role: "candidate" });
   res.json(users);
 });
 
-/* =========================
-   NLP Resume Upload
-========================= */
+/* NLP Resume */
 app.post("/upload-resume", async (req, res) => {
   const { email, text } = req.body;
 
   const tokenizer = new natural.WordTokenizer();
   const words = tokenizer.tokenize(text.toLowerCase());
-
   const keywords = [...new Set(words)];
 
   await User.findOneAndUpdate(
@@ -179,9 +140,7 @@ app.post("/upload-resume", async (req, res) => {
   res.json({ msg: "Resume processed", keywords });
 });
 
-/* =========================
-   Job Matching
-========================= */
+/* Match */
 app.post("/match", async (req, res) => {
   const { jobText } = req.body;
 
@@ -206,7 +165,7 @@ app.post("/match", async (req, res) => {
   res.json({ msg: "Matching done" });
 });
 
-/* ========================= */
+/* Test */
 app.get("/", (req, res) => {
   res.send("Backend running ✅");
 });
