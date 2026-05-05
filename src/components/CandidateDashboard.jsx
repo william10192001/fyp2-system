@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useState } from "react";
 import CandidateProfile from "./CandidateProfile";
+import ResumeUpload from "./ResumeUpload";
 
 function CandidateDashboard({ user }) {
   const [myData, setMyData] = useState(null);
@@ -21,6 +22,7 @@ function CandidateDashboard({ user }) {
     <>
       {/* Profile */}
       <CandidateProfile user={user} refresh={fetchMyData} />
+      <ResumeUpload user={user} />
 
       {/* Dashboard */}
       <div className="p-6 text-white">
