@@ -152,12 +152,25 @@ app.get("/candidates", async (req, res) => {
 /* NLP Resume */
 app.post("/upload-resume", upload.single("file"), async (req, res) => {
   try {
+    console.log("📄 Upload request received");
+
     if (!req.file) {
       return res.status(400).json({ msg: "No file uploaded" });
     }
 
-    const data = await pdfParse(req.file.buffer);
-    const text = data.text;
+    // 🔥 防止 pdfParse crash
+    let text = "";
+    try {
+      const data = await pdfParse(req.file.buffer);
+      text = data.text;
+    } catch (err) {
+      console.log("PDF PARSE ERROR:", err);
+      return res.status(400).json({ msg: "Cannot read PDF ❌" });
+    }
+
+    if (!text || text.length < 10) {
+      return res.status(400).json({ msg: "Empty or invalid PDF ❌" });
+    }
 
     const tokenizer = new natural.WordTokenizer();
     const words = tokenizer.tokenize(text.toLowerCase());
@@ -169,11 +182,13 @@ app.post("/upload-resume", upload.single("file"), async (req, res) => {
       { resumeKeywords: keywords }
     );
 
+    console.log("✅ Resume processed");
+
     res.json({ msg: "Resume processed", keywords });
 
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
-    res.status(500).json({ msg: "Upload failed" });
+    res.status(500).json({ msg: "Upload failed ❌" });
   }
 });
 
