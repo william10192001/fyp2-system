@@ -2,16 +2,15 @@
 
 function ResumeUpload({ user }) {
   const [file, setFile] = useState(null);
-  const [keywords, setKeywords] = useState([]);
 
   const upload = async () => {
     if (!file) {
-      alert("Please select a PDF");
+      alert("Select file first");
       return;
     }
 
     const formData = new FormData();
-    formData.append("resume", file);
+    formData.append("file", file);
     formData.append("email", user.email);
 
     try {
@@ -23,12 +22,11 @@ function ResumeUpload({ user }) {
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.msg || "Upload failed");
+        alert(data.msg || "Upload failed ❌");
         return;
       }
 
-      setKeywords(data.keywords);
-      alert("Resume analyzed ✅");
+      alert("Upload success ✅");
 
     } catch (err) {
       console.error(err);
@@ -38,28 +36,16 @@ function ResumeUpload({ user }) {
 
   return (
     <div className="p-6 text-white">
-      <h2 className="text-xl mb-4">Upload Resume (PDF)</h2>
+      <h2>Upload Resume</h2>
 
       <input
         type="file"
-        accept="application/pdf"
         onChange={(e) => setFile(e.target.files[0])}
-        className="mb-4"
       />
 
-      <button
-        onClick={upload}
-        className="bg-green-500 px-4 py-2 rounded"
-      >
+      <button onClick={upload} className="bg-blue-500 p-2 mt-2">
         Upload & Analyze
       </button>
-
-      {keywords.length > 0 && (
-        <div className="mt-4">
-          <h3>Extracted Keywords:</h3>
-          <p>{keywords.join(", ")}</p>
-        </div>
-      )}
     </div>
   );
 }
