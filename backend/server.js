@@ -137,6 +137,7 @@ app.post("/reset-password/:token", async (req, res) => {
   } catch (err) {
     res.status(500).json({ msg: "Error" });
   }
+console.log("📧 Sending email to:", user.email);
 });
 
 /* =========================
