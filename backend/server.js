@@ -1,5 +1,5 @@
 require("dotenv").config();
-
+const crypto = require("crypto");
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
@@ -9,183 +9,165 @@ const nodemailer = require("nodemailer");
 const User = require("./models/User");
 
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
 /* =========================
-   🔥 1. 连接 MongoDB
+   🔥 MongoDB
 ========================= */
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB Connected ✅"))
-  .catch(err => console.log("Mongo Error:", err));
+  .catch(err => console.log(err));
 
 /* =========================
-   🔥 2. Register
+   🔥 Mail Config（必须在上面）
+========================= */
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
+
+/* =========================
+   🔥 Register
 ========================= */
 app.post("/register", async (req, res) => {
   const { email, password, role } = req.body;
 
-  if (!email.includes("@")) {
-    return res.status(400).json({ msg: "Invalid email" });
-  }
-
-  if (password.length < 6) {
-    return res.status(400).json({ msg: "Password min 6 chars" });
-  }
-
   try {
     const exists = await User.findOne({ email });
-
-    if (exists) {
-      return res.status(400).json({ msg: "User already exists" });
-    }
+    if (exists) return res.status(400).json({ msg: "User exists" });
 
     const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    const hashed = await bcrypt.hash(password, salt);
 
-    const newUser = new User({
-  email,
-  password: hashedPassword,
-  role: role
-});
+    await new User({ email, password: hashed, role }).save();
 
-    await newUser.save();
-
-    res.json({ msg: "Registered successfully" });
+    res.json({ msg: "Registered" });
 
   } catch (err) {
-    console.log("REGISTER ERROR:", err);
-    res.status(500).json({ msg: "Server error" });
+    res.status(500).json({ msg: "Error" });
   }
 });
 
 /* =========================
-   🔥 3. Login
+   🔥 Login
 ========================= */
 app.post("/login", async (req, res) => {
-  try {
-    console.log("👉 LOGIN HIT");
+  const { email, password } = req.body;
 
-    const { email, password } = req.body;
+  const user = await User.findOne({ email });
+  if (!user) return res.status(400).json({ msg: "No user" });
 
-    const user = await User.findOne({ email });
+  const ok = await bcrypt.compare(password, user.password);
+  if (!ok) return res.status(400).json({ msg: "Wrong password" });
 
-    if (!user) {
-      console.log("❌ USER NOT FOUND:", email);
-      return res.status(400).json({ msg: "User not found" });
-    }
+  const token = jwt.sign(
+    { id: user._id, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
 
-    const isMatch = await bcrypt.compare(password, user.password);
-
-    if (!isMatch) {
-      return res.status(400).json({ msg: "Wrong password" });
-    }
-
-    const token = jwt.sign(
-      {
-        id: user._id,
-        role: user.role
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    console.log("✅ LOGIN SUCCESS:", email);
-
-    res.json({
-      token,
-      user: {
-        email: user.email,
-        role: user.role
-      }
-    });
-
-  } catch (err) {
-    console.log("🔥 LOGIN ERROR:", err);
-    res.status(500).json({ msg: "Server error" });
-  }
+  res.json({
+    token,
+    user: { email: user.email, role: user.role }
+  });
 });
 
 /* =========================
-   🔥 4. Forgot Password（已修复🔥）
+   🔥 Forgot Password（发邮件）
 ========================= */
 app.post("/forgot-password", async (req, res) => {
   const { email } = req.body;
 
-  console.log("Forgot password:", email);
-
   try {
-    // 假设你用 mongoose
     const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ msg: "User not found" });
 
-    if (!user) {
-      return res.status(404).json({ msg: "User not found" });
-    }
+    const token = crypto.randomBytes(32).toString("hex");
 
-    // 先做测试用（不发邮件）
-    res.json({ msg: "Reset link sent (mock)" });
+    user.resetToken = token;
+    user.resetTokenExpiry = Date.now() + 1000 * 60 * 15;
+    await user.save();
+
+    const link = `${process.env.FRONTEND_URL}/reset/${token}`;
+
+    await transporter.sendMail({
+      to: user.email,
+      subject: "Reset Password",
+      html: `<a href="${link}">Reset Password</a>`
+    });
+
+    res.json({ msg: "Email sent ✅" });
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ msg: "Server error" });
+    console.log(err);
+    res.status(500).json({ msg: "Error" });
   }
 });
 
 /* =========================
-   🔥 5. Reset Password
+   🔥 Reset Password
 ========================= */
 app.post("/reset-password/:token", async (req, res) => {
-  const { password } = req.body;
   const { token } = req.params;
+  const { password } = req.body;
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    await User.findByIdAndUpdate(decoded.id, {
-      password: hashedPassword
+    const user = await User.findOne({
+      resetToken: token,
+      resetTokenExpiry: { $gt: Date.now() }
     });
 
-    console.log("✅ PASSWORD RESET SUCCESS");
+    if (!user) return res.status(400).json({ msg: "Invalid token" });
+
+    const salt = await bcrypt.genSalt(10);
+    const hashed = await bcrypt.hash(password, salt);
+
+    user.password = hashed;
+    user.resetToken = undefined;
+    user.resetTokenExpiry = undefined;
+
+    await user.save();
 
     res.json({ msg: "Password reset success ✅" });
 
   } catch (err) {
-    console.log("🔥 RESET ERROR:", err);
-    res.status(400).json({ msg: "Invalid or expired token" });
+    res.status(500).json({ msg: "Error" });
   }
 });
 
 /* =========================
-   🔥 6. Test
+   🔥 Profile
 ========================= */
-app.get("/", (req, res) => {
-  res.send("Backend running ✅");
-});
-
-/* =========================
-   🔥 7. Start
-========================= */
-app.listen(5000, () => {
-  console.log("Server running on http://localhost:5000");
-});
-
 app.post("/profile", async (req, res) => {
   const { email, name, phone, skills, experience, education } = req.body;
 
   await User.findOneAndUpdate(
     { email },
-    { name, phone, skills, experience, education },
-    { new: true }
+    { name, phone, skills, experience, education }
   );
 
-  res.json({ msg: "Profile saved" });
+  res.json({ msg: "Saved" });
 });
 
+/* =========================
+   🔥 Candidates
+========================= */
 app.get("/candidates", async (req, res) => {
   const users = await User.find({ role: "candidate" });
   res.json(users);
+});
+
+/* =========================
+   🔥 Test
+========================= */
+app.get("/", (req, res) => {
+  res.send("Backend running ✅");
+});
+
+app.listen(5000, () => {
+  console.log("Server running on 5000");
 });
