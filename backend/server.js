@@ -7,6 +7,10 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const natural = require("natural");
+const multer = require("multer");
+const pdfParse = require("pdf-parse");
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 const User = require("./models/User");
 
@@ -146,19 +150,31 @@ app.get("/candidates", async (req, res) => {
 });
 
 /* NLP Resume */
-app.post("/upload-resume", async (req, res) => {
-  const { email, text } = req.body;
+app.post("/upload-resume", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ msg: "No file uploaded" });
+    }
 
-  const tokenizer = new natural.WordTokenizer();
-  const words = tokenizer.tokenize(text.toLowerCase());
-  const keywords = [...new Set(words)];
+    const data = await pdfParse(req.file.buffer);
+    const text = data.text;
 
-  await User.findOneAndUpdate(
-    { email },
-    { resumeKeywords: keywords }
-  );
+    const tokenizer = new natural.WordTokenizer();
+    const words = tokenizer.tokenize(text.toLowerCase());
 
-  res.json({ msg: "Resume processed", keywords });
+    const keywords = [...new Set(words)];
+
+    await User.findOneAndUpdate(
+      { email: req.body.email },
+      { resumeKeywords: keywords }
+    );
+
+    res.json({ msg: "Resume processed", keywords });
+
+  } catch (err) {
+    console.error("UPLOAD ERROR:", err);
+    res.status(500).json({ msg: "Upload failed" });
+  }
 });
 
 /* Match */
