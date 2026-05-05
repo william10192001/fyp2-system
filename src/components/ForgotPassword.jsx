@@ -4,34 +4,47 @@ function ForgotPassword() {
   const [email, setEmail] = useState("");
 
   const submit = async () => {
-    try {
-      console.log("Sending request...");
+  try {
+    console.log("Sending request...");
 
-      const res = await fetch("https://fyp2-backend-gihc.onrender.com/forgot-password", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ email })
-      });
+    let res;
 
-      console.log("Response status:", res.status);
+    // 🔥 retry 机制
+    for (let i = 0; i < 2; i++) {
+      try {
+        res = await fetch("https://fyp2-backend-gihc.onrender.com/forgot-password", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ email })
+        });
 
-      const data = await res.json();
-      console.log("Response data:", data);
-
-      if (!res.ok) {
-        alert(data.msg || "Error");
-        return;
+        break; // 成功就跳出
+      } catch (err) {
+        console.log("Retrying...");
       }
-
-      alert("Email sent ✅");
-
-    } catch (err) {
-      console.error(err);
-      alert("Cannot connect to server ❌");
     }
-  };
+
+    if (!res) {
+      alert("Server sleeping, try again in 10s ⏳");
+      return;
+    }
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.msg || "Error");
+      return;
+    }
+
+    alert("Email sent ✅");
+
+  } catch (err) {
+    console.error(err);
+    alert("Cannot connect to server ❌");
+  }
+};
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-black text-white">
