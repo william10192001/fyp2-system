@@ -78,6 +78,8 @@ app.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
 
+    console.log("📧 Request:", email);
+
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ msg: "User not found" });
 
@@ -89,19 +91,25 @@ app.post("/forgot-password", async (req, res) => {
 
     const link = `${process.env.FRONTEND_URL}/reset/${token}`;
 
-    await transporter.sendMail({
-      to: user.email,
-      subject: "Reset Password",
-      html: `<a href="${link}">${link}</a>`
-    });
+    try {
+      await transporter.sendMail({
+        to: user.email,
+        subject: "Reset Password",
+        html: `<h2>Reset Password</h2><a href="${link}">${link}</a>`
+      });
 
-    console.log("📧 Email sent to:", user.email);
+      console.log("✅ Email sent");
+
+    } catch (mailErr) {
+      console.log("❌ EMAIL ERROR:", mailErr);
+      return res.status(500).json({ msg: "Email failed ❌" });
+    }
 
     res.json({ msg: "Email sent ✅" });
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ msg: "Error" });
+    console.error("SERVER ERROR:", err);
+    res.status(500).json({ msg: "Server error ❌" });
   }
 });
 
@@ -160,37 +168,25 @@ app.post("/upload-resume", upload.single("file"), async (req, res) => {
 
     // 🔥 防止 pdfParse crash
     let text = "";
-    try {
-      const data = await pdfParse(req.file.buffer);
-      text = data.text;
-    } catch (err) {
-      console.log("PDF PARSE ERROR:", err);
-      return res.status(400).json({ msg: "Cannot read PDF ❌" });
-    }
 
-    if (!text || text.length < 10) {
-      return res.status(400).json({ msg: "Empty or invalid PDF ❌" });
-    }
+try {
+  const data = await pdfParse(req.file.buffer);
 
-    const tokenizer = new natural.WordTokenizer();
-    const words = tokenizer.tokenize(text.toLowerCase());
-
-    const keywords = [...new Set(words)];
-
-    await User.findOneAndUpdate(
-      { email: req.body.email },
-      { resumeKeywords: keywords }
-    );
-
-    console.log("✅ Resume processed");
-
-    res.json({ msg: "Resume processed", keywords });
-
-  } catch (err) {
-    console.error("UPLOAD ERROR:", err);
-    res.status(500).json({ msg: "Upload failed ❌" });
+  if (!data.text || data.text.trim().length < 20) {
+    throw new Error("Empty PDF");
   }
-});
+
+  text = data.text;
+
+} catch (err) {
+  console.log("PDF ERROR:", err);
+
+  // 👉 fallback（直接当失败但不崩）
+  return res.status(200).json({
+    msg: "PDF uploaded but no text detected ⚠️",
+    keywords: []
+  });
+}
 
 /* Match */
 app.post("/match", async (req, res) => {
