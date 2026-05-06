@@ -1,44 +1,47 @@
 ﻿import React, { useState } from "react";
 
-function CandidateDashboard({ candidates, setCandidates, user, logout }) {
-  const [skill, setSkill] = useState("");
-  const [education, setEducation] = useState("");
+function EmployerDashboard() {
+  const [jobText, setJobText] = useState("");
+  const [results, setResults] = useState([]);
 
-  const addProfile = () => {
-    const score = skill.includes("React") ? 95 : 70;
+  const match = async () => {
+    const res = await fetch("https://fyp2-backend-gihc.onrender.com/match", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ jobText })
+    });
 
-    setCandidates([
-      ...candidates,
-      {
-        id: Date.now(),
-        user: user.email,
-        skill,
-        education,
-        score
-      }
-    ]);
+    const data = await res.json();
+    setResults(data);
   };
 
   return (
-    <div>
-      <h1>Candidate Dashboard</h1>
+    <div className="p-6 text-white">
+      <h1 className="text-xl mb-4">Employer Dashboard</h1>
 
-      <input placeholder="Skill" onChange={(e)=>setSkill(e.target.value)} />
-      <input placeholder="Education" onChange={(e)=>setEducation(e.target.value)} />
+      <textarea
+        placeholder="Paste job description..."
+        className="w-full p-2 text-black"
+        onChange={(e) => setJobText(e.target.value)}
+      />
 
-      <button onClick={addProfile}>Submit</button>
+      <button onClick={match} className="bg-green-500 p-2 mt-2">
+        Run AI Matching
+      </button>
 
-      <h3>Your Profiles:</h3>
+      <h2 className="mt-6">Results:</h2>
 
-      {candidates.filter(c=>c.user===user.email).map(c=>(
-        <div key={c.id}>
-          {c.skill} - {c.education} - Score: {c.score}
+      {results.map((r, i) => (
+        <div key={i} className="border p-2 mt-2">
+          <b>{r.email}</b>  
+          <div>Score: {r.score}%</div>
+          <div>Matched: {r.matched.join(", ")}</div>
         </div>
       ))}
-
-      <button onClick={logout}>Logout</button>
     </div>
   );
 }
 
-export default CandidateDashboard;
+export default EmployerDashboard;

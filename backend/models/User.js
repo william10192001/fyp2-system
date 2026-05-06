@@ -17,7 +17,8 @@ const userSchema = new mongoose.Schema({
   education: String,
 
   // NLP resume
-  resumeKeywords: [String]
+  resumeKeywords: [String],
+  matchScore: Number
 });
 
 module.exports = mongoose.model("User", userSchema);

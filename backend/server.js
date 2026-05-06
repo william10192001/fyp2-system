@@ -25,7 +25,9 @@ mongoose.connect(process.env.MONGO_URI)
 
 /* Mail */
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
@@ -168,35 +170,36 @@ app.post("/upload-resume", upload.single("file"), async (req, res) => {
 
     try {
       const data = await pdfParse(req.file.buffer);
-
-      if (!data.text || data.text.trim().length < 20) {
-        throw new Error("Empty PDF");
-      }
-
-      text = data.text;
-
+      text = data.text || "";
     } catch (err) {
       console.log("PDF ERROR:", err);
-
-      return res.status(200).json({
-        msg: "PDF uploaded but no text detected ⚠️",
-        keywords: []
-      });
+      return res.status(400).json({ msg: "Cannot read PDF ❌" });
     }
 
+    if (!text || text.trim().length < 30) {
+      return res.status(400).json({ msg: "PDF has no readable text ❌" });
+    }
+
+    // 🔥 NLP处理（升级版）
     const tokenizer = new natural.WordTokenizer();
     const words = tokenizer.tokenize(text.toLowerCase());
 
-    const keywords = [...new Set(words)];
+    // 去掉无用词
+    const stopwords = ["the","and","is","in","to","of","for","on","with","a","an"];
+    const filtered = words.filter(w => !stopwords.includes(w));
+
+    const keywords = [...new Set(filtered)];
 
     await User.findOneAndUpdate(
       { email: req.body.email },
       { resumeKeywords: keywords }
     );
 
-    console.log("✅ Resume processed");
-
-    res.json({ msg: "Resume processed", keywords });
+    res.json({
+      msg: "Resume processed ✅",
+      totalKeywords: keywords.length,
+      keywords
+    });
 
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
@@ -206,34 +209,37 @@ app.post("/upload-resume", upload.single("file"), async (req, res) => {
 
 /* Match */
 app.post("/match", async (req, res) => {
-  const { jobText } = req.body;
+  try {
+    const { jobText } = req.body;
 
-  const tokenizer = new natural.WordTokenizer();
-  const jobWords = tokenizer.tokenize(jobText.toLowerCase());
+    const tokenizer = new natural.WordTokenizer();
+    const jobWords = tokenizer.tokenize(jobText.toLowerCase());
 
-  const users = await User.find({ resumeKeywords: { $exists: true } });
+    const users = await User.find({ resumeKeywords: { $exists: true } });
 
-  for (let user of users) {
-    const match = user.resumeKeywords.filter(w => jobWords.includes(w));
-    const percent = (match.length / jobWords.length) * 100;
+    let results = [];
 
-    if (percent >= 80) {
-      await transporter.sendMail({
-        to: process.env.EMAIL_USER,
-        subject: "Match Found",
-        text: `${user.email} matched ${percent.toFixed(2)}%`
+    for (let user of users) {
+      const resumeWords = user.resumeKeywords || [];
+
+      const match = resumeWords.filter(w => jobWords.includes(w));
+
+      const score = Math.round((match.length / jobWords.length) * 100);
+
+      results.push({
+        email: user.email,
+        score,
+        matched: match.slice(0, 10)
       });
     }
+
+    // 🔥 排序（AI ranking）
+    results.sort((a, b) => b.score - a.score);
+
+    res.json(results);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: "Match failed ❌" });
   }
-
-  res.json({ msg: "Matching done" });
-});
-
-/* Test */
-app.get("/", (req, res) => {
-  res.send("Backend running ✅");
-});
-
-app.listen(5000, () => {
-  console.log("Server running on 5000");
 });
