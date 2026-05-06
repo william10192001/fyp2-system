@@ -160,33 +160,49 @@ app.get("/candidates", async (req, res) => {
 /* NLP Resume */
 app.post("/upload-resume", upload.single("file"), async (req, res) => {
   try {
-    console.log("📄 Upload request received");
-
     if (!req.file) {
       return res.status(400).json({ msg: "No file uploaded" });
     }
 
-    // 🔥 防止 pdfParse crash
     let text = "";
 
-try {
-  const data = await pdfParse(req.file.buffer);
+    try {
+      const data = await pdfParse(req.file.buffer);
 
-  if (!data.text || data.text.trim().length < 20) {
-    throw new Error("Empty PDF");
+      if (!data.text || data.text.trim().length < 20) {
+        throw new Error("Empty PDF");
+      }
+
+      text = data.text;
+
+    } catch (err) {
+      console.log("PDF ERROR:", err);
+
+      return res.status(200).json({
+        msg: "PDF uploaded but no text detected ⚠️",
+        keywords: []
+      });
+    }
+
+    const tokenizer = new natural.WordTokenizer();
+    const words = tokenizer.tokenize(text.toLowerCase());
+
+    const keywords = [...new Set(words)];
+
+    await User.findOneAndUpdate(
+      { email: req.body.email },
+      { resumeKeywords: keywords }
+    );
+
+    console.log("✅ Resume processed");
+
+    res.json({ msg: "Resume processed", keywords });
+
+  } catch (err) {
+    console.error("UPLOAD ERROR:", err);
+    res.status(500).json({ msg: "Upload failed ❌" });
   }
-
-  text = data.text;
-
-} catch (err) {
-  console.log("PDF ERROR:", err);
-
-  // 👉 fallback（直接当失败但不崩）
-  return res.status(200).json({
-    msg: "PDF uploaded but no text detected ⚠️",
-    keywords: []
-  });
-}
+});
 
 /* Match */
 app.post("/match", async (req, res) => {
