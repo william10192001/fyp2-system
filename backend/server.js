@@ -308,13 +308,14 @@ app.post("/upload-resume", upload.single("file"), async (req, res) => {
 /* AI Matching */
 app.post("/match", async (req, res) => {
   try {
+
     const { jobText } = req.body;
 
     const tokenizer = new natural.WordTokenizer();
 
     const stopwords = [
-      "the","and","is","in","to","of","for","on","with",
-      "a","an","or","as","at","by","be"
+      "the","and","is","in","to","of",
+      "for","on","with","a","an"
     ];
 
     const jobWords = tokenizer
@@ -331,21 +332,22 @@ app.post("/match", async (req, res) => {
 
       const resumeWords = user.resumeKeywords || [];
 
-      const matchedWords = resumeWords.filter(w =>
+      const matched = resumeWords.filter(w =>
         jobWords.includes(w)
       );
 
-      const uniqueMatch = [...new Set(matchedWords)];
-
       const score = Math.round(
-        (uniqueMatch.length / jobWords.length) * 100
+        (matched.length / jobWords.length) * 100
       );
+
+      await User.findByIdAndUpdate(user._id, {
+        matchScore: score
+      });
 
       results.push({
         email: user.email,
-        name: user.name || "Unknown",
         score,
-        matched: uniqueMatch.slice(0, 15)
+        matchedKeywords: matched.slice(0, 15)
       });
     }
 
@@ -354,9 +356,11 @@ app.post("/match", async (req, res) => {
     res.json(results);
 
   } catch (err) {
-    console.error("MATCH ERROR:", err);
+
+    console.log(err);
+
     res.status(500).json({
-      msg: "AI Match failed ❌"
+      msg: "AI Match Failed ❌"
     });
   }
 });
