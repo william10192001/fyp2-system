@@ -9,7 +9,7 @@ const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const natural = require("natural");
 const multer = require("multer");
-const pdfParse = require("pdf-parse");
+const pdf = require("pdf-parse");
 
 const User = require("./models/User");
 
@@ -256,7 +256,7 @@ app.post("/upload-resume", upload.single("file"), async (req, res) => {
       });
     }
 
-    const data = await pdfParse(req.file.buffer);
+    const data = await pdf(req.file.buffer);
 
     const text = data.text || "";
 
