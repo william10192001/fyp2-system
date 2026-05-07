@@ -244,6 +244,7 @@ app.post("/reset-password/:token", async (req, res) => {
 
 
 /* Resume Upload + NLP */
+/* Resume Upload + NLP */
 app.post("/upload-resume", upload.single("file"), async (req, res) => {
 
   try {
@@ -266,48 +267,39 @@ app.post("/upload-resume", upload.single("file"), async (req, res) => {
 
     const tokenizer = new natural.WordTokenizer();
 
-    const rawWords = tokenizer.tokenize(text.toLowerCase());
-
-const stopwords = [
-  "the","and","is","in","to","of","for","on","with",
-  "a","an","or","by","at","from","that","this",
-  "it","as","are","be","was","were","will",
-  "their","them","they","you","your","our",
-  "now","through","using","used","work","worked",
-  "phone","email","gmail","com","whatsapp",
-  "jan","feb","mar","apr","may","jun",
-  "jul","aug","sep","oct","nov","dec",
-  "2020","2021","2022","2023","2024","2025","2026"
-];
-
-// 🔥 cleaner NLP keywords
-const words = rawWords.filter(word => {
-
-  // remove stopwords
-  if (stopwords.includes(word)) return false;
-
-  // remove short words
-  if (word.length <= 2) return false;
-
-  // remove numbers
-  if (/^\d+$/.test(word)) return false;
-
-  // remove email-like
-  if (word.includes("@")) return false;
-
-  // remove special chars
-  if (!/^[a-zA-Z+#.]+$/.test(word)) return false;
-
-  return true;
-});
-
-const keywords = [...new Set(words)];
-
-    const filtered = words.filter(
-      w => !stopwords.includes(w)
+    const rawWords = tokenizer.tokenize(
+      text.toLowerCase()
     );
 
-    const keywords = [...new Set(filtered)];
+    const stopwords = [
+      "the","and","is","in","to","of","for","on","with",
+      "a","an","or","by","at","from","that","this",
+      "it","as","are","be","was","were","will",
+      "their","them","they","you","your","our",
+      "now","through","using","used","work","worked",
+      "phone","email","gmail","com","whatsapp",
+      "jan","feb","mar","apr","may","jun",
+      "jul","aug","sep","oct","nov","dec",
+      "2020","2021","2022","2023","2024","2025","2026"
+    ];
+
+    // 🔥 better keyword cleaning
+    const words = rawWords.filter(word => {
+
+      if (stopwords.includes(word)) return false;
+
+      if (word.length <= 2) return false;
+
+      if (/^\d+$/.test(word)) return false;
+
+      if (word.includes("@")) return false;
+
+      if (!/^[a-zA-Z+#.]+$/.test(word)) return false;
+
+      return true;
+    });
+
+    const keywords = [...new Set(words)];
 
     await User.findOneAndUpdate(
       { email: req.body.email },
@@ -318,6 +310,7 @@ const keywords = [...new Set(words)];
 
     res.json({
       msg: "Resume processed ✅",
+      totalKeywords: keywords.length,
       keywords
     });
 
@@ -406,6 +399,11 @@ app.post("/match", async (req, res) => {
     }
 
     const jobKeywords = employer.jobKeywords || [];
+	if (jobKeywords.length === 0) {
+  return res.status(400).json({
+    msg: "No employer keywords found"
+  });
+}
 
     const candidates = await User.find({
       role: "candidate",
@@ -419,16 +417,30 @@ app.post("/match", async (req, res) => {
       const resumeWords =
         candidate.resumeKeywords || [];
 
-      const matched = resumeWords.filter(word =>
-        jobKeywords.includes(word)
-      );
+      const matched = resumeWords.filter(resumeWord => {
 
-      const score = Math.round(
+  return jobKeywords.some(jobWord => {
+
+    return (
+      resumeWord.includes(jobWord) ||
+      jobWord.includes(resumeWord)
+    );
+
+  });
+
+});
+
+const score = jobKeywords.length === 0
+  ? 0
+  : Math.min(
+      100,
+      Math.round(
         (matched.length / jobKeywords.length) * 100
-      );
+      )
+    );
 
       // 🔥 only show >=80%
-      if (score >= 80) {
+      if (score >= 30) {
 
         results.push({
 
