@@ -346,16 +346,20 @@ app.post("/job", async (req, res) => {
       "for","on","with","a","an"
     ];
 
-    const keywords = rawWords.filter(word => {
+   const keywords = rawWords.filter(word => {
 
-      if (stopwords.includes(word)) return false;
+  if (stopwords.includes(word)) return false;
 
-      if (word.length <= 2) return false;
+  if (word.length <= 2) return false;
 
-      if (/^\d+$/.test(word)) return false;
+  // ❌ remove numbers
+  if (/^\d+$/.test(word)) return false;
 
-      return true;
-    });
+  // ❌ remove symbols
+  if (!/^[a-zA-Z+#.]+$/.test(word)) return false;
+
+  return true;
+});
 
     await User.findOneAndUpdate(
       { email },
@@ -421,10 +425,7 @@ app.post("/match", async (req, res) => {
 
   return jobKeywords.some(jobWord => {
 
-    return (
-      resumeWord.includes(jobWord) ||
-      jobWord.includes(resumeWord)
-    );
+    return resumeWord === jobWord;
 
   });
 
@@ -439,7 +440,6 @@ const score = jobKeywords.length === 0
       )
     );
 
-      // 🔥 only show >=80%
       if (score >= 30) {
 
         results.push({
