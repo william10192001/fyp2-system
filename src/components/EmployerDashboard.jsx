@@ -7,15 +7,11 @@ function EmployerDashboard({ user, logout }) {
 
   const [results, setResults] = useState([]);
 
-  const [savedKeywords, setSavedKeywords] =
-    useState([]);
-
-  /* SAVE JOB */
+  // SAVE JOB
   const saveJob = async () => {
 
     if (!jobDescription.trim()) {
-      alert("Please enter job requirements");
-      return;
+      return alert("Please enter job keywords");
     }
 
     const res = await fetch(
@@ -34,14 +30,10 @@ function EmployerDashboard({ user, logout }) {
 
     const data = await res.json();
 
-    if (data.keywords) {
-      setSavedKeywords(data.keywords);
-    }
-
     alert(data.msg);
   };
 
-  /* RUN AI MATCH */
+  // RUN MATCH
   const runMatch = async () => {
 
     const res = await fetch(
@@ -59,33 +51,28 @@ function EmployerDashboard({ user, logout }) {
 
     const data = await res.json();
 
-    if (Array.isArray(data)) {
-      setResults(data);
-    } else {
-      alert(data.msg || "Matching failed");
+    if (data.msg) {
+      alert(data.msg);
+      return;
     }
+
+    setResults(data);
   };
 
   return (
 
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-800 text-white p-8">
+    <div className="min-h-screen bg-gray-950 text-white p-8">
 
-      {/* HEADER */}
-      <div className="flex justify-between items-center mb-10">
+      {/* TOP BAR */}
+      <div className="flex justify-between items-center mb-8">
 
-        <div>
-          <h1 className="text-4xl font-bold">
-            AI Recruitment Dashboard
-          </h1>
-
-          <p className="text-gray-400 mt-2">
-            Intelligent Candidate Matching System
-          </p>
-        </div>
+        <h1 className="text-4xl font-bold">
+          AI Recruitment Dashboard
+        </h1>
 
         <button
           onClick={logout}
-          className="bg-red-500 hover:bg-red-600 px-5 py-3 rounded-xl font-semibold"
+          className="bg-red-500 hover:bg-red-600 px-5 py-2 rounded-lg"
         >
           Logout
         </button>
@@ -93,9 +80,9 @@ function EmployerDashboard({ user, logout }) {
       </div>
 
       {/* JOB INPUT */}
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 shadow-xl">
+      <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800">
 
-        <h2 className="text-2xl font-bold mb-4">
+        <h2 className="text-2xl font-semibold mb-4">
           Job Requirements
         </h2>
 
@@ -104,30 +91,52 @@ function EmployerDashboard({ user, logout }) {
           onChange={(e) =>
             setJobDescription(e.target.value)
           }
-          className="w-full h-52 p-5 rounded-xl bg-gray-800 text-white border border-gray-600 focus:outline-none focus:border-blue-500"
-          placeholder={`Example:
-
-React
+          className="
+            w-full
+            h-52
+            p-5
+            rounded-xl
+            bg-gray-800
+            text-white
+            border
+            border-gray-700
+            outline-none
+          "
+          placeholder={`React
 Node.js
 MongoDB
 Cybersecurity
-2 years experience
-Bachelor Degree`}
+JavaScript
+API
+Backend`}
         />
 
-        {/* BUTTONS */}
         <div className="flex gap-4 mt-6">
 
           <button
             onClick={saveJob}
-            className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-xl font-semibold"
+            className="
+              bg-blue-600
+              hover:bg-blue-700
+              px-6
+              py-3
+              rounded-xl
+              font-semibold
+            "
           >
             Save Job Keywords
           </button>
 
           <button
             onClick={runMatch}
-            className="bg-green-600 hover:bg-green-700 px-6 py-3 rounded-xl font-semibold"
+            className="
+              bg-green-600
+              hover:bg-green-700
+              px-6
+              py-3
+              rounded-xl
+              font-semibold
+            "
           >
             Run AI Matching
           </button>
@@ -136,137 +145,116 @@ Bachelor Degree`}
 
       </div>
 
-      {/* SAVED KEYWORDS */}
-      {savedKeywords.length > 0 && (
-
-        <div className="mt-8 bg-gray-900 border border-gray-700 rounded-2xl p-6">
-
-          <h2 className="text-2xl font-bold mb-4">
-            Saved Keywords
-          </h2>
-
-          <div className="flex flex-wrap gap-3">
-
-            {savedKeywords.map((word, index) => (
-
-              <div
-                key={index}
-                className="bg-blue-600 px-4 py-2 rounded-full text-sm"
-              >
-                {word}
-              </div>
-
-            ))}
-
-          </div>
-
-        </div>
-
-      )}
-
-      {/* MATCH RESULTS */}
+      {/* RESULTS */}
       <div className="mt-10">
 
-        <h2 className="text-3xl font-bold mb-6">
-          Candidate Results
-        </h2>
-
-        {results.length === 0 && (
+        {results.length === 0 ? (
 
           <div className="text-gray-400">
-            No matching candidates yet
+            No candidates matched yet.
           </div>
 
-        )}
+        ) : (
 
-        {results.map((candidate, index) => (
+          results.map((candidate, index) => (
 
-          <div
-            key={index}
-            className="bg-gray-900 border border-gray-700 rounded-2xl p-6 mb-6 shadow-xl"
-          >
+            <div
+              key={index}
+              className="
+                bg-gray-900
+                border
+                border-gray-800
+                p-6
+                rounded-2xl
+                mb-6
+              "
+            >
 
-            <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center">
 
-              <div>
-
-                <h2 className="text-2xl font-bold">
-                  {candidate.name}
+                <h2 className="text-3xl font-bold">
+                  {candidate.name || "Unknown"}
                 </h2>
 
-                <div className="text-gray-400 mt-1">
-                  {candidate.email}
+                <div className="text-green-400 text-2xl font-bold">
+                  {candidate.score}%
                 </div>
 
               </div>
 
-              <div className="bg-green-600 px-5 py-3 rounded-xl text-xl font-bold">
-                {candidate.score}%
+              <div className="mt-5 space-y-2 text-gray-300">
+
+                <div>
+                  <span className="font-semibold text-white">
+                    Email:
+                  </span>{" "}
+                  {candidate.email}
+                </div>
+
+                <div>
+                  <span className="font-semibold text-white">
+                    Phone:
+                  </span>{" "}
+                  {candidate.phone}
+                </div>
+
+                <div>
+                  <span className="font-semibold text-white">
+                    Education:
+                  </span>{" "}
+                  {candidate.education}
+                </div>
+
+                <div>
+                  <span className="font-semibold text-white">
+                    Experience:
+                  </span>{" "}
+                  {candidate.experience}
+                </div>
+
+                <div>
+                  <span className="font-semibold text-white">
+                    Skills:
+                  </span>{" "}
+                  {candidate.skills}
+                </div>
+
+              </div>
+
+              <div className="mt-5">
+
+                <div className="text-blue-400 font-semibold mb-2">
+                  Matched Keywords
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+
+                  {candidate.matchedKeywords.map(
+                    (word, i) => (
+
+                      <span
+                        key={i}
+                        className="
+                          bg-blue-500/20
+                          text-blue-300
+                          px-3
+                          py-1
+                          rounded-full
+                          text-sm
+                        "
+                      >
+                        {word}
+                      </span>
+                    )
+                  )}
+
+                </div>
+
               </div>
 
             </div>
-
-            <div className="grid grid-cols-2 gap-4 mt-6">
-
-              <div>
-                <span className="text-gray-400">
-                  Phone:
-                </span>
-                <div>{candidate.phone}</div>
-              </div>
-
-              <div>
-                <span className="text-gray-400">
-                  Education:
-                </span>
-                <div>{candidate.education}</div>
-              </div>
-
-              <div>
-                <span className="text-gray-400">
-                  Experience:
-                </span>
-                <div>{candidate.experience}</div>
-              </div>
-
-              <div>
-                <span className="text-gray-400">
-                  Skills:
-                </span>
-                <div>{candidate.skills}</div>
-              </div>
-
-            </div>
-
-            {/* MATCHED KEYWORDS */}
-            <div className="mt-6">
-
-              <div className="text-lg font-semibold mb-3">
-                Matched Keywords
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-
-                {candidate.matchedKeywords.map(
-                  (word, i) => (
-
-                    <div
-                      key={i}
-                      className="bg-gray-700 px-4 py-2 rounded-full text-sm"
-                    >
-                      {word}
-                    </div>
-
-                  )
-                )}
-
-              </div>
-
-            </div>
-
-          </div>
-
-        ))}
+          ))
+        )}
 
       </div>
 

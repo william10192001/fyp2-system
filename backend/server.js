@@ -484,16 +484,10 @@ app.get("/candidates", async (req, res) => {
 });
 
 
-
-
-
 /* Test */
 app.get("/", (req, res) => {
   res.send("Backend running ✅");
 });
-
-
-
 
 
 const PORT = process.env.PORT || 5000;

@@ -86,7 +86,7 @@ function App() {
                 ? <Navigate to="/employer" />
                 : <Navigate to="/candidate" />
             ) : (
-              <Login />
+              <Login onLogin={login} />
             )
           }
         />
