@@ -37,9 +37,7 @@ mongoose.connect(process.env.MONGO_URI)
 
 /* Mail */
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
+  service: "gmail",
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
@@ -309,16 +307,19 @@ app.post("/upload-resume", upload.single("file"), async (req, res) => {
 
 /* AI Matching */
 app.post("/match", async (req, res) => {
-
   try {
-
     const { jobText } = req.body;
 
     const tokenizer = new natural.WordTokenizer();
 
-    const jobWords = tokenizer.tokenize(
-      jobText.toLowerCase()
-    );
+    const stopwords = [
+      "the","and","is","in","to","of","for","on","with",
+      "a","an","or","as","at","by","be"
+    ];
+
+    const jobWords = tokenizer
+      .tokenize(jobText.toLowerCase())
+      .filter(w => !stopwords.includes(w));
 
     const users = await User.find({
       resumeKeywords: { $exists: true }
@@ -330,25 +331,21 @@ app.post("/match", async (req, res) => {
 
       const resumeWords = user.resumeKeywords || [];
 
-      const matched = resumeWords.filter(
-        w => jobWords.includes(w)
+      const matchedWords = resumeWords.filter(w =>
+        jobWords.includes(w)
       );
+
+      const uniqueMatch = [...new Set(matchedWords)];
 
       const score = Math.round(
-        (matched.length / jobWords.length) * 100
-      );
-
-      await User.findByIdAndUpdate(
-        user._id,
-        {
-          matchScore: score
-        }
+        (uniqueMatch.length / jobWords.length) * 100
       );
 
       results.push({
         email: user.email,
+        name: user.name || "Unknown",
         score,
-        matched: matched.slice(0, 10)
+        matched: uniqueMatch.slice(0, 15)
       });
     }
 
@@ -357,17 +354,12 @@ app.post("/match", async (req, res) => {
     res.json(results);
 
   } catch (err) {
-
-    console.log(err);
-
+    console.error("MATCH ERROR:", err);
     res.status(500).json({
-      msg: "Match failed ❌"
+      msg: "AI Match failed ❌"
     });
   }
 });
-
-
-
 
 
 /* Candidates */
