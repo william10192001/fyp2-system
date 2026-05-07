@@ -266,12 +266,42 @@ app.post("/upload-resume", upload.single("file"), async (req, res) => {
 
     const tokenizer = new natural.WordTokenizer();
 
-    const words = tokenizer.tokenize(text.toLowerCase());
+    const rawWords = tokenizer.tokenize(text.toLowerCase());
 
-    const stopwords = [
-      "the","and","is","in","to",
-      "of","for","on","with","a","an"
-    ];
+const stopwords = [
+  "the","and","is","in","to","of","for","on","with",
+  "a","an","or","by","at","from","that","this",
+  "it","as","are","be","was","were","will",
+  "their","them","they","you","your","our",
+  "now","through","using","used","work","worked",
+  "phone","email","gmail","com","whatsapp",
+  "jan","feb","mar","apr","may","jun",
+  "jul","aug","sep","oct","nov","dec",
+  "2020","2021","2022","2023","2024","2025","2026"
+];
+
+// 🔥 cleaner NLP keywords
+const words = rawWords.filter(word => {
+
+  // remove stopwords
+  if (stopwords.includes(word)) return false;
+
+  // remove short words
+  if (word.length <= 2) return false;
+
+  // remove numbers
+  if (/^\d+$/.test(word)) return false;
+
+  // remove email-like
+  if (word.includes("@")) return false;
+
+  // remove special chars
+  if (!/^[a-zA-Z+#.]+$/.test(word)) return false;
+
+  return true;
+});
+
+const keywords = [...new Set(words)];
 
     const filtered = words.filter(
       w => !stopwords.includes(w)
@@ -302,53 +332,118 @@ app.post("/upload-resume", upload.single("file"), async (req, res) => {
 });
 
 
+/* Employer Job Keywords */
+app.post("/job", async (req, res) => {
 
-
-
-/* AI Matching */
-app.post("/match", async (req, res) => {
   try {
 
-    const { jobText } = req.body;
+    const {
+      email,
+      jobDescription
+    } = req.body;
 
     const tokenizer = new natural.WordTokenizer();
+
+    const rawWords = tokenizer.tokenize(
+      jobDescription.toLowerCase()
+    );
 
     const stopwords = [
       "the","and","is","in","to","of",
       "for","on","with","a","an"
     ];
 
-    const jobWords = tokenizer
-      .tokenize(jobText.toLowerCase())
-      .filter(w => !stopwords.includes(w));
+    const keywords = rawWords.filter(word => {
 
-    const users = await User.find({
+      if (stopwords.includes(word)) return false;
+
+      if (word.length <= 2) return false;
+
+      if (/^\d+$/.test(word)) return false;
+
+      return true;
+    });
+
+    await User.findOneAndUpdate(
+      { email },
+      {
+        jobDescription,
+        jobKeywords: [...new Set(keywords)]
+      }
+    );
+
+    res.json({
+      msg: "Job keywords saved ✅",
+      keywords
+    });
+
+  } catch (err) {
+
+    console.log(err);
+
+    res.status(500).json({
+      msg: "Job save failed ❌"
+    });
+  }
+});
+
+
+/* AI Matching */
+app.post("/match", async (req, res) => {
+
+  try {
+
+    const { employerEmail } = req.body;
+
+    const employer = await User.findOne({
+      email: employerEmail
+    });
+
+    if (!employer) {
+      return res.status(404).json({
+        msg: "Employer not found"
+      });
+    }
+
+    const jobKeywords = employer.jobKeywords || [];
+
+    const candidates = await User.find({
+      role: "candidate",
       resumeKeywords: { $exists: true }
     });
 
     let results = [];
 
-    for (let user of users) {
+    for (let candidate of candidates) {
 
-      const resumeWords = user.resumeKeywords || [];
+      const resumeWords =
+        candidate.resumeKeywords || [];
 
-      const matched = resumeWords.filter(w =>
-        jobWords.includes(w)
+      const matched = resumeWords.filter(word =>
+        jobKeywords.includes(word)
       );
 
       const score = Math.round(
-        (matched.length / jobWords.length) * 100
+        (matched.length / jobKeywords.length) * 100
       );
 
-      await User.findByIdAndUpdate(user._id, {
-        matchScore: score
-      });
+      // 🔥 only show >=80%
+      if (score >= 80) {
 
-      results.push({
-        email: user.email,
-        score,
-        matchedKeywords: matched.slice(0, 15)
-      });
+        results.push({
+
+          name: candidate.name,
+          email: candidate.email,
+          phone: candidate.phone,
+          education: candidate.education,
+          skills: candidate.skills,
+          experience: candidate.experience,
+
+          score,
+
+          matchedKeywords: matched.slice(0, 20)
+        });
+      }
     }
 
     results.sort((a, b) => b.score - a.score);
@@ -360,7 +455,7 @@ app.post("/match", async (req, res) => {
     console.log(err);
 
     res.status(500).json({
-      msg: "AI Match Failed ❌"
+      msg: "AI Matching failed ❌"
     });
   }
 });
