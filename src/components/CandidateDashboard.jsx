@@ -17,18 +17,22 @@ function CandidateDashboard({ user, logout }) {
         );
 
         setMyData(found);
+
       });
+
   };
 
   useEffect(() => {
+
     fetchMyData();
+
   }, [user]);
 
   return (
 
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-[#0f172a] text-white">
 
-      {/* TOP NAVBAR */}
+      {/* NAVBAR */}
       <div className="
         flex
         justify-between
@@ -37,7 +41,7 @@ function CandidateDashboard({ user, logout }) {
         py-5
         border-b
         border-gray-800
-        bg-gray-900
+        bg-[#111827]
       ">
 
         <div>
@@ -57,6 +61,7 @@ function CandidateDashboard({ user, logout }) {
           className="
             bg-red-500
             hover:bg-red-600
+            transition
             px-5
             py-2
             rounded-xl
@@ -68,25 +73,31 @@ function CandidateDashboard({ user, logout }) {
 
       </div>
 
-      {/* MAIN CONTENT */}
+      {/* MAIN */}
       <div className="p-8">
 
-        {/* PROFILE + RESUME */}
+        {/* TOP GRID */}
         <div className="
           grid
           md:grid-cols-2
           gap-6
         ">
 
+          {/* PROFILE */}
           <div className="
-            bg-gray-900
+            bg-[#111827]
             border
             border-gray-800
             rounded-2xl
             p-6
+            shadow-lg
           ">
 
-            <h2 className="text-2xl font-bold mb-4">
+            <h2 className="
+              text-2xl
+              font-bold
+              mb-5
+            ">
               My Profile
             </h2>
 
@@ -97,15 +108,21 @@ function CandidateDashboard({ user, logout }) {
 
           </div>
 
+          {/* RESUME */}
           <div className="
-            bg-gray-900
+            bg-[#111827]
             border
             border-gray-800
             rounded-2xl
             p-6
+            shadow-lg
           ">
 
-            <h2 className="text-2xl font-bold mb-4">
+            <h2 className="
+              text-2xl
+              font-bold
+              mb-5
+            ">
               Resume Upload
             </h2>
 
@@ -115,17 +132,22 @@ function CandidateDashboard({ user, logout }) {
 
         </div>
 
-        {/* USER INFO */}
+        {/* INFO SECTION */}
         <div className="
           mt-8
-          bg-gray-900
+          bg-[#111827]
           border
           border-gray-800
           rounded-2xl
           p-8
+          shadow-lg
         ">
 
-          <h2 className="text-2xl font-bold mb-6">
+          <h2 className="
+            text-2xl
+            font-bold
+            mb-6
+          ">
             Candidate Information
           </h2>
 
@@ -137,88 +159,148 @@ function CandidateDashboard({ user, logout }) {
               gap-6
             ">
 
+              {/* NAME */}
               <div className="
-                bg-gray-800
+                bg-[#1e293b]
                 p-5
                 rounded-xl
               ">
-                <div className="text-gray-400 text-sm">
+
+                <div className="
+                  text-gray-400
+                  text-sm
+                ">
                   Full Name
                 </div>
 
-                <div className="text-xl font-semibold mt-1">
+                <div className="
+                  text-xl
+                  font-semibold
+                  mt-1
+                ">
                   {myData.name || "Not set"}
                 </div>
+
               </div>
 
+              {/* EMAIL */}
               <div className="
-                bg-gray-800
+                bg-[#1e293b]
                 p-5
                 rounded-xl
               ">
-                <div className="text-gray-400 text-sm">
+
+                <div className="
+                  text-gray-400
+                  text-sm
+                ">
                   Email
                 </div>
 
-                <div className="text-xl font-semibold mt-1">
+                <div className="
+                  text-xl
+                  font-semibold
+                  mt-1
+                ">
                   {myData.email}
                 </div>
+
               </div>
 
+              {/* PHONE */}
               <div className="
-                bg-gray-800
+                bg-[#1e293b]
                 p-5
                 rounded-xl
               ">
-                <div className="text-gray-400 text-sm">
+
+                <div className="
+                  text-gray-400
+                  text-sm
+                ">
                   Phone
                 </div>
 
-                <div className="text-xl font-semibold mt-1">
+                <div className="
+                  text-xl
+                  font-semibold
+                  mt-1
+                ">
                   {myData.phone || "Not set"}
                 </div>
+
               </div>
 
+              {/* EDUCATION */}
               <div className="
-                bg-gray-800
+                bg-[#1e293b]
                 p-5
                 rounded-xl
               ">
-                <div className="text-gray-400 text-sm">
+
+                <div className="
+                  text-gray-400
+                  text-sm
+                ">
                   Education
                 </div>
 
-                <div className="text-xl font-semibold mt-1">
+                <div className="
+                  text-xl
+                  font-semibold
+                  mt-1
+                ">
                   {myData.education || "Not set"}
                 </div>
+
               </div>
 
+              {/* EXPERIENCE */}
               <div className="
-                bg-gray-800
+                bg-[#1e293b]
                 p-5
                 rounded-xl
               ">
-                <div className="text-gray-400 text-sm">
+
+                <div className="
+                  text-gray-400
+                  text-sm
+                ">
                   Experience
                 </div>
 
-                <div className="text-xl font-semibold mt-1">
+                <div className="
+                  text-xl
+                  font-semibold
+                  mt-1
+                ">
                   {myData.experience || "Not set"}
                 </div>
+
               </div>
 
+              {/* SKILLS */}
               <div className="
-                bg-gray-800
+                bg-[#1e293b]
                 p-5
                 rounded-xl
               ">
-                <div className="text-gray-400 text-sm">
+
+                <div className="
+                  text-gray-400
+                  text-sm
+                ">
                   Skills
                 </div>
 
-                <div className="text-xl font-semibold mt-1">
+                <div className="
+                  text-xl
+                  font-semibold
+                  mt-1
+                ">
                   {myData.skills || "Not set"}
                 </div>
+
               </div>
 
             </div>
@@ -226,7 +308,7 @@ function CandidateDashboard({ user, logout }) {
           ) : (
 
             <div className="text-gray-400">
-              Loading candidate profile...
+              Loading...
             </div>
 
           )}
@@ -236,7 +318,9 @@ function CandidateDashboard({ user, logout }) {
       </div>
 
     </div>
+
   );
+
 }
 
 export default CandidateDashboard;
