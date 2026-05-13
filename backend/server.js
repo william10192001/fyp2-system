@@ -405,8 +405,8 @@ app.post("/job", async (req, res) => {
 
 
 /* AI Matching */
+/* AI Matching */
 app.post("/match", async (req, res) => {
-	
 
   try {
 
@@ -422,12 +422,14 @@ app.post("/match", async (req, res) => {
       });
     }
 
-    const jobKeywords = employer.jobKeywords || [];
-	if (jobKeywords.length === 0) {
-  return res.status(400).json({
-    msg: "No employer keywords found"
-  });
-}
+    const jobKeywords =
+      employer.jobKeywords || [];
+
+    if (jobKeywords.length === 0) {
+      return res.status(400).json({
+        msg: "No employer keywords found"
+      });
+    }
 
     const candidates = await User.find({
       role: "candidate",
@@ -441,102 +443,105 @@ app.post("/match", async (req, res) => {
       const resumeWords =
         candidate.resumeKeywords || [];
 
-   const matched = [];
+      const matched = [];
 
-// exact keyword matching
-for (let resumeWord of resumeWords) {
+      // keyword matching
+      for (let resumeWord of resumeWords) {
 
-  for (let jobWord of jobKeywords) {
+        for (let jobWord of jobKeywords) {
 
-    // remove numbers
-    if (/^\d+$/.test(resumeWord)) continue;
-    if (/^\d+$/.test(jobWord)) continue;
+          // skip pure numbers
+          if (/^\d+$/.test(resumeWord)) continue;
+          if (/^\d+$/.test(jobWord)) continue;
 
-    // exact match only
-    if (
-      resumeWord.toLowerCase().trim() ===
-      jobWord.toLowerCase().trim()
-    ) {
+          // exact match only
+          if (
+            resumeWord.toLowerCase().trim() ===
+            jobWord.toLowerCase().trim()
+          ) {
 
-      if (!matched.includes(resumeWord)) {
-        matched.push(resumeWord);
+            if (!matched.includes(resumeWord)) {
+              matched.push(resumeWord);
+            }
+
+          }
+
+        }
+
+      }
+
+      // keyword score
+      let keywordScore = 0;
+
+      if (jobKeywords.length > 0) {
+
+        keywordScore = Math.round(
+          (matched.length / jobKeywords.length) * 100
+        );
+
+      }
+
+      // experience score
+      let experienceScore = 0;
+
+      if (employer.requiredExperience > 0) {
+
+        if (
+          candidate.experienceYears >=
+          employer.requiredExperience
+        ) {
+
+          experienceScore = 100;
+
+        } else {
+
+          experienceScore = Math.round(
+            (
+              candidate.experienceYears /
+              employer.requiredExperience
+            ) * 100
+          );
+
+        }
+
+      }
+
+      // final score
+      const finalScore = Math.round(
+        (keywordScore * 0.8) +
+        (experienceScore * 0.2)
+      );
+
+      if (finalScore >= 30) {
+
+        results.push({
+
+          name: candidate.name,
+
+          email: candidate.email,
+
+          phone: candidate.phone,
+
+          education: candidate.education,
+
+          skills: candidate.skills,
+
+          experience: candidate.experience,
+
+          experienceYears:
+            candidate.experienceYears || 0,
+
+          score: finalScore,
+
+          matchedKeywords:
+            matched.slice(0, 20)
+
+        });
+
       }
 
     }
 
-  }
-
-}
-
-// keyword score
-let keywordScore = 0;
-
-if (jobKeywords.length > 0) {
-
-  keywordScore = Math.round(
-    (matched.length / jobKeywords.length) * 100
-  );
-
-}
-
-// experience score
-let experienceScore = 0;
-
-if (employer.requiredExperience > 0) {
-
-  if (
-    candidate.experienceYears >=
-    employer.requiredExperience
-  ) {
-
-    experienceScore = 100;
-
-  } else {
-
-    experienceScore = Math.round(
-      (
-        candidate.experienceYears /
-        employer.requiredExperience
-      ) * 100
-    );
-
-  }
-
-}
-
-// final score
-const finalScore = Math.round(
-  (keywordScore * 0.8) +
-  (experienceScore * 0.2)
-);
-
-if (finalScore >= 30) {
-
-  results.push({
-
-    name: candidate.name,
-
-    email: candidate.email,
-
-    phone: candidate.phone,
-
-    education: candidate.education,
-
-    skills: candidate.skills,
-
-    experience: candidate.experience,
-
-    experienceYears:
-      candidate.experienceYears || 0,
-
-    score: finalScore,
-
-    matchedKeywords:
-      matched.slice(0, 20)
-
-  });
-
-}
     results.sort((a, b) => b.score - a.score);
 
     res.json(results);
@@ -548,7 +553,9 @@ if (finalScore >= 30) {
     res.status(500).json({
       msg: "AI Matching failed ❌"
     });
+
   }
+
 });
 
 
