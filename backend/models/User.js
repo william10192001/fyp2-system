@@ -1,27 +1,44 @@
 const mongoose = require("mongoose");
 
-const userSchema = new mongoose.Schema({
+const UserSchema = new mongoose.Schema({
+
   email: String,
+
   password: String,
+
   role: String,
 
-  // forgot password
-  resetToken: String,
-  resetTokenExpiry: Date,
-
-  // profile
   name: String,
+
   phone: String,
-  skills: String,
-  experience: String,
+
   education: String,
 
-  // NLP resume
+  skills: String,
+
+  experience: String,
+
   resumeKeywords: [String],
+
   jobKeywords: [String],
+
   jobDescription: String,
-  matchScore: Number
+
+  resetToken: String,
+
+  resetTokenExpiry: Date,
+
+  // 🔥 NEW
+  experienceYears: {
+    type: Number,
+    default: 0
+  },
+
+  requiredExperience: {
+    type: Number,
+    default: 0
+  }
 
 });
 
-module.exports = mongoose.model("User", userSchema);
+module.exports = mongoose.model("User", UserSchema);

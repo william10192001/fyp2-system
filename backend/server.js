@@ -259,6 +259,14 @@ app.post("/upload-resume", upload.single("file"), async (req, res) => {
 
     const text = data.text || "";
 
+const experienceMatch =
+  text.match(/(\d+)\+?\s+years?/i);
+
+const experienceYears =
+  experienceMatch
+    ? parseInt(experienceMatch[1])
+    : 0;
+
     if (text.trim().length < 30) {
       return res.status(400).json({
         msg: "PDF has no readable text ❌"
@@ -304,7 +312,8 @@ app.post("/upload-resume", upload.single("file"), async (req, res) => {
     await User.findOneAndUpdate(
       { email: req.body.email },
       {
-        resumeKeywords: keywords
+        resumeKeywords: keywords,
+	experienceYears
       }
     );
 
@@ -336,6 +345,13 @@ app.post("/job", async (req, res) => {
     } = req.body;
 
     const tokenizer = new natural.WordTokenizer();
+    const expMatch =
+  	jobDescription.match(/(\d+)\+?\s+years?/i);
+
+	const requiredExperience =
+  	expMatch
+    	? parseInt(expMatch[1])
+    	: 0;
 
     const rawWords = tokenizer.tokenize(
       jobDescription.toLowerCase()
@@ -362,12 +378,15 @@ app.post("/job", async (req, res) => {
 });
 
     await User.findOneAndUpdate(
-      { email },
-      {
-        jobDescription,
-        jobKeywords: [...new Set(keywords)]
-      }
-    );
+  { email },
+  {
+    jobDescription,
+
+    jobKeywords: [...new Set(keywords)],
+
+    requiredExperience
+  }
+);
 
     res.json({
       msg: "Job keywords saved ✅",
@@ -387,6 +406,7 @@ app.post("/job", async (req, res) => {
 
 /* AI Matching */
 app.post("/match", async (req, res) => {
+	
 
   try {
 
@@ -421,43 +441,99 @@ app.post("/match", async (req, res) => {
       const resumeWords =
         candidate.resumeKeywords || [];
 
-      const matched = resumeWords.filter(resumeWord => {
+    const matched = [];
 
-  return jobKeywords.some(jobWord => {
+for (let resumeWord of resumeWords) {
 
-    return resumeWord === jobWord;
+  for (let jobWord of jobKeywords) {
+
+    // remove number-only values
+    if (/^\d+$/.test(resumeWord)) continue;
+    if (/^\d+$/.test(jobWord)) continue;
+
+    // exact match only
+    if (
+      resumeWord.toLowerCase().trim() ===
+      jobWord.toLowerCase().trim()
+    ) {
+
+      if (!matched.includes(resumeWord)) {
+        matched.push(resumeWord);
+      }
+
+    }
+
+  }
+
+}
+
+// 🔥 keyword score
+let keywordScore = jobKeywords.length === 0
+  ? 0
+  : Math.round(
+      (matched.length / jobKeywords.length) * 100
+    );
+
+// 🔥 experience score
+let experienceScore = 0;
+
+if (
+  employer.requiredExperience > 0
+) {
+
+  if (
+    candidate.experienceYears >=
+    employer.requiredExperience
+  ) {
+
+    experienceScore = 100;
+
+  } else {
+
+    experienceScore = Math.round(
+      (
+        candidate.experienceYears /
+        employer.requiredExperience
+      ) * 100
+    );
+
+  }
+
+}
+
+// 🔥 final smart score
+const finalScore = Math.round(
+  (keywordScore * 0.8) +
+  (experienceScore * 0.2)
+);
+
+if (finalScore >= 30) {
+
+  results.push({
+
+    name: candidate.name,
+
+    email: candidate.email,
+
+    phone: candidate.phone,
+
+    education: candidate.education,
+
+    skills: candidate.skills,
+
+    experience: candidate.experience,
+
+    experienceYears:
+      candidate.experienceYears || 0,
+
+    score: finalScore,
+
+    matchedKeywords:
+      matched.slice(0, 20)
 
   });
 
-});
-
-const score = jobKeywords.length === 0
-  ? 0
-  : Math.min(
-      100,
-      Math.round(
-        (matched.length / jobKeywords.length) * 100
-      )
-    );
-
-      if (score >= 30) {
-
-        results.push({
-
-          name: candidate.name,
-          email: candidate.email,
-          phone: candidate.phone,
-          education: candidate.education,
-          skills: candidate.skills,
-          experience: candidate.experience,
-
-          score,
-
-          matchedKeywords: matched.slice(0, 20)
-        });
-      }
-    }
-
+}
     results.sort((a, b) => b.score - a.score);
 
     res.json(results);
