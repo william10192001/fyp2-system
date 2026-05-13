@@ -310,12 +310,12 @@ const experienceYears =
     const keywords = [...new Set(words)];
 
     await User.findOneAndUpdate(
-      { email: req.body.email },
-      {
-        resumeKeywords: keywords,
-	experienceYears
-      }
-    );
+  { email: req.body.email },
+  {
+    resumeKeywords: keywords,
+    experienceYears: experienceYears
+  }
+);
 
     res.json({
       msg: "Resume processed ✅",
@@ -377,14 +377,14 @@ app.post("/job", async (req, res) => {
   return true;
 });
 
-    await User.findOneAndUpdate(
+  await User.findOneAndUpdate(
   { email },
   {
     jobDescription,
 
     jobKeywords: [...new Set(keywords)],
 
-    requiredExperience
+    requiredExperience: requiredExperience
   }
 );
 
@@ -441,13 +441,14 @@ app.post("/match", async (req, res) => {
       const resumeWords =
         candidate.resumeKeywords || [];
 
-    const matched = [];
+   const matched = [];
 
+// exact keyword matching
 for (let resumeWord of resumeWords) {
 
   for (let jobWord of jobKeywords) {
 
-    // remove number-only values
+    // remove numbers
     if (/^\d+$/.test(resumeWord)) continue;
     if (/^\d+$/.test(jobWord)) continue;
 
@@ -467,19 +468,21 @@ for (let resumeWord of resumeWords) {
 
 }
 
-// 🔥 keyword score
-let keywordScore = jobKeywords.length === 0
-  ? 0
-  : Math.round(
-      (matched.length / jobKeywords.length) * 100
-    );
+// keyword score
+let keywordScore = 0;
 
-// 🔥 experience score
+if (jobKeywords.length > 0) {
+
+  keywordScore = Math.round(
+    (matched.length / jobKeywords.length) * 100
+  );
+
+}
+
+// experience score
 let experienceScore = 0;
 
-if (
-  employer.requiredExperience > 0
-) {
+if (employer.requiredExperience > 0) {
 
   if (
     candidate.experienceYears >=
@@ -501,7 +504,7 @@ if (
 
 }
 
-// 🔥 final smart score
+// final score
 const finalScore = Math.round(
   (keywordScore * 0.8) +
   (experienceScore * 0.2)
