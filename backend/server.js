@@ -22,18 +22,12 @@ const upload = multer({
   storage: multer.memoryStorage()
 });
 
-
-
-
-
 /* MongoDB */
-mongoose.connect(process.env.MONGO_URI)
+mongoose.connect(process.env.MONGO_URI, {
+  serverSelectionTimeoutMS: 5000
+})
 .then(() => console.log("MongoDB Connected ✅"))
 .catch(err => console.log(err));
-
-
-
-
 
 /* Mail */
 const transporter = nodemailer.createTransport({
@@ -44,12 +38,9 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-
-
-
-
 /* Register */
 app.post("/register", async (req, res) => {
+
   try {
 
     const { email, password, role } = req.body;
@@ -83,12 +74,10 @@ app.post("/register", async (req, res) => {
     res.status(500).json({
       msg: "Register failed ❌"
     });
+
   }
+
 });
-
-
-
-
 
 /* Login */
 app.post("/login", async (req, res) => {
@@ -139,12 +128,10 @@ app.post("/login", async (req, res) => {
     res.status(500).json({
       msg: "Login failed ❌"
     });
+
   }
+
 });
-
-
-
-
 
 /* Forgot Password */
 app.post("/forgot-password", async (req, res) => {
@@ -164,11 +151,14 @@ app.post("/forgot-password", async (req, res) => {
     const token = crypto.randomBytes(32).toString("hex");
 
     user.resetToken = token;
-    user.resetTokenExpiry = Date.now() + 1000 * 60 * 15;
+
+    user.resetTokenExpiry =
+      Date.now() + 1000 * 60 * 15;
 
     await user.save();
 
-    const link = `${process.env.FRONTEND_URL}/reset/${token}`;
+    const link =
+      `${process.env.FRONTEND_URL}/reset/${token}`;
 
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
@@ -176,7 +166,6 @@ app.post("/forgot-password", async (req, res) => {
       subject: "Reset Password",
       html: `
         <h2>Reset Password</h2>
-        <p>Click the link below:</p>
         <a href="${link}">${link}</a>
       `
     });
@@ -187,17 +176,15 @@ app.post("/forgot-password", async (req, res) => {
 
   } catch (err) {
 
-    console.log("EMAIL ERROR:", err);
+    console.log(err);
 
     res.status(500).json({
       msg: "Email failed ❌"
     });
+
   }
+
 });
-
-
-
-
 
 /* Reset Password */
 app.post("/reset-password/:token", async (req, res) => {
@@ -205,11 +192,14 @@ app.post("/reset-password/:token", async (req, res) => {
   try {
 
     const { token } = req.params;
+
     const { password } = req.body;
 
     const user = await User.findOne({
       resetToken: token,
-      resetTokenExpiry: { $gt: Date.now() }
+      resetTokenExpiry: {
+        $gt: Date.now()
+      }
     });
 
     if (!user) {
@@ -218,9 +208,11 @@ app.post("/reset-password/:token", async (req, res) => {
       });
     }
 
-    user.password = await bcrypt.hash(password, 10);
+    user.password =
+      await bcrypt.hash(password, 10);
 
     user.resetToken = undefined;
+
     user.resetTokenExpiry = undefined;
 
     await user.save();
@@ -236,104 +228,124 @@ app.post("/reset-password/:token", async (req, res) => {
     res.status(500).json({
       msg: "Reset failed ❌"
     });
+
   }
+
 });
 
-
-
-
-
 /* Resume Upload + NLP */
-/* Resume Upload + NLP */
-app.post("/upload-resume", upload.single("file"), async (req, res) => {
+app.post(
+  "/upload-resume",
+  upload.single("file"),
+  async (req, res) => {
 
-  try {
+    try {
 
-    if (!req.file) {
-      return res.status(400).json({
-        msg: "No file uploaded"
+      if (!req.file) {
+        return res.status(400).json({
+          msg: "No file uploaded"
+        });
+      }
+
+      const data = await pdf(req.file.buffer);
+
+      const text = data.text || "";
+
+      const experienceMatch =
+        text.match(/(\d+)\+?\s+years?/i);
+
+      const experienceYears =
+        experienceMatch
+          ? parseInt(experienceMatch[1])
+          : 0;
+
+      if (text.trim().length < 30) {
+
+        return res.status(400).json({
+          msg: "PDF has no readable text ❌"
+        });
+
+      }
+
+      const tokenizer =
+        new natural.WordTokenizer();
+
+      const rawWords =
+        tokenizer.tokenize(
+          text.toLowerCase()
+        );
+
+      const stopwords = [
+        "the","and","is","in","to","of",
+        "for","on","with","a","an",
+        "or","by","at","from"
+      ];
+
+      const words = rawWords.filter(word => {
+
+        if (stopwords.includes(word))
+          return false;
+
+        if (word.length <= 2)
+          return false;
+
+        if (/^\d+$/.test(word))
+          return false;
+
+        if (word.includes("@"))
+          return false;
+
+        if (!/^[a-zA-Z+#.]+$/.test(word))
+          return false;
+
+        return true;
+
       });
+
+      const keywords = [...new Set(words)];
+
+      // limit preview text
+      const resumePreview =
+        text.substring(0, 4000);
+
+      await User.findOneAndUpdate(
+        {
+          email: req.body.email
+        },
+        {
+          resumeKeywords: keywords,
+
+          experienceYears:
+
+            experienceYears,
+
+          resumeText:
+            resumePreview
+        }
+      );
+
+      res.json({
+        msg: "Resume processed ✅",
+        totalKeywords:
+          keywords.length,
+        keywords
+      });
+
+    } catch (err) {
+
+      console.log(
+        "UPLOAD ERROR:",
+        err
+      );
+
+      res.status(500).json({
+        msg: "Upload failed ❌"
+      });
+
     }
 
-    const data = await pdf(req.file.buffer);
-
-    const text = data.text || "";
-
-const experienceMatch =
-  text.match(/(\d+)\+?\s+years?/i);
-
-const experienceYears =
-  experienceMatch
-    ? parseInt(experienceMatch[1])
-    : 0;
-
-    if (text.trim().length < 30) {
-      return res.status(400).json({
-        msg: "PDF has no readable text ❌"
-      });
-    }
-
-    const tokenizer = new natural.WordTokenizer();
-
-    const rawWords = tokenizer.tokenize(
-      text.toLowerCase()
-    );
-
-    const stopwords = [
-      "the","and","is","in","to","of","for","on","with",
-      "a","an","or","by","at","from","that","this",
-      "it","as","are","be","was","were","will",
-      "their","them","they","you","your","our",
-      "now","through","using","used","work","worked",
-      "phone","email","gmail","com","whatsapp",
-      "jan","feb","mar","apr","may","jun",
-      "jul","aug","sep","oct","nov","dec",
-      "2020","2021","2022","2023","2024","2025","2026"
-    ];
-
-    // 🔥 better keyword cleaning
-    const words = rawWords.filter(word => {
-
-      if (stopwords.includes(word)) return false;
-
-      if (word.length <= 2) return false;
-
-      if (/^\d+$/.test(word)) return false;
-
-      if (word.includes("@")) return false;
-
-      if (!/^[a-zA-Z+#.]+$/.test(word)) return false;
-
-      return true;
-    });
-
-    const keywords = [...new Set(words)];
-
-    await User.findOneAndUpdate(
-  { email: req.body.email },
-  {
-    resumeKeywords: keywords,
-    experienceYears: experienceYears,
-    resumeText: text
   }
 );
-
-    res.json({
-      msg: "Resume processed ✅",
-      totalKeywords: keywords.length,
-      keywords
-    });
-
-  } catch (err) {
-
-    console.log("UPLOAD ERROR:", err);
-
-    res.status(500).json({
-      msg: "Upload failed ❌"
-    });
-  }
-});
-
 
 /* Employer Job Keywords */
 app.post("/job", async (req, res) => {
@@ -345,49 +357,59 @@ app.post("/job", async (req, res) => {
       jobDescription
     } = req.body;
 
-    const tokenizer = new natural.WordTokenizer();
     const expMatch =
-  	jobDescription.match(/(\d+)\+?\s+years?/i);
+      jobDescription.match(
+        /(\d+)\+?\s+years?/i
+      );
 
-	const requiredExperience =
-  	expMatch
-    	? parseInt(expMatch[1])
-    	: 0;
+    const requiredExperience =
+      expMatch
+        ? parseInt(expMatch[1])
+        : 0;
 
-    const rawWords = tokenizer.tokenize(
-      jobDescription.toLowerCase()
-    );
+    const tokenizer =
+      new natural.WordTokenizer();
+
+    const rawWords =
+      tokenizer.tokenize(
+        jobDescription.toLowerCase()
+      );
 
     const stopwords = [
       "the","and","is","in","to","of",
       "for","on","with","a","an"
     ];
 
-   const keywords = rawWords.filter(word => {
+    const keywords =
+      rawWords.filter(word => {
 
-  if (stopwords.includes(word)) return false;
+        if (stopwords.includes(word))
+          return false;
 
-  if (word.length <= 2) return false;
+        if (word.length <= 2)
+          return false;
 
-  // ❌ remove numbers
-  if (/^\d+$/.test(word)) return false;
+        if (/^\d+$/.test(word))
+          return false;
 
-  // ❌ remove symbols
-  if (!/^[a-zA-Z+#.]+$/.test(word)) return false;
+        if (!/^[a-zA-Z+#.]+$/.test(word))
+          return false;
 
-  return true;
-});
+        return true;
 
-  await User.findOneAndUpdate(
-  { email },
-  {
-    jobDescription,
+      });
 
-    jobKeywords: [...new Set(keywords)],
+    await User.findOneAndUpdate(
+      { email },
+      {
+        jobDescription,
 
-    requiredExperience: requiredExperience
-  }
-);
+        jobKeywords:
+          [...new Set(keywords)],
+
+        requiredExperience
+      }
+    );
 
     res.json({
       msg: "Job keywords saved ✅",
@@ -401,11 +423,11 @@ app.post("/job", async (req, res) => {
     res.status(500).json({
       msg: "Job save failed ❌"
     });
+
   }
+
 });
 
-
-/* AI Matching */
 /* AI Matching */
 app.post("/match", async (req, res) => {
 
@@ -413,29 +435,26 @@ app.post("/match", async (req, res) => {
 
     const { employerEmail } = req.body;
 
-    const employer = await User.findOne({
-      email: employerEmail
-    });
+    const employer =
+      await User.findOne({
+        email: employerEmail
+      });
 
     if (!employer) {
+
       return res.status(404).json({
         msg: "Employer not found"
       });
+
     }
 
     const jobKeywords =
       employer.jobKeywords || [];
 
-    if (jobKeywords.length === 0) {
-      return res.status(400).json({
-        msg: "No employer keywords found"
+    const candidates =
+      await User.find({
+        role: "candidate"
       });
-    }
-
-    const candidates = await User.find({
-      role: "candidate",
-      resumeKeywords: { $exists: true }
-    });
 
     let results = [];
 
@@ -444,25 +463,23 @@ app.post("/match", async (req, res) => {
       const resumeWords =
         candidate.resumeKeywords || [];
 
-      const matched = [];
+      let matched = [];
 
-      // keyword matching
       for (let resumeWord of resumeWords) {
 
         for (let jobWord of jobKeywords) {
 
-          // skip pure numbers
-          if (/^\d+$/.test(resumeWord)) continue;
-          if (/^\d+$/.test(jobWord)) continue;
-
-          // exact match only
           if (
             resumeWord.toLowerCase().trim() ===
             jobWord.toLowerCase().trim()
           ) {
 
-            if (!matched.includes(resumeWord)) {
+            if (
+              !matched.includes(resumeWord)
+            ) {
+
               matched.push(resumeWord);
+
             }
 
           }
@@ -471,21 +488,24 @@ app.post("/match", async (req, res) => {
 
       }
 
-      // keyword score
       let keywordScore = 0;
 
       if (jobKeywords.length > 0) {
 
         keywordScore = Math.round(
-          (matched.length / jobKeywords.length) * 100
+          (
+            matched.length /
+            jobKeywords.length
+          ) * 100
         );
 
       }
 
-      // experience score
       let experienceScore = 0;
 
-      if (employer.requiredExperience > 0) {
+      if (
+        employer.requiredExperience > 0
+      ) {
 
         if (
           candidate.experienceYears >=
@@ -496,22 +516,23 @@ app.post("/match", async (req, res) => {
 
         } else {
 
-          experienceScore = Math.round(
-            (
-              candidate.experienceYears /
-              employer.requiredExperience
-            ) * 100
-          );
+          experienceScore =
+            Math.round(
+              (
+                candidate.experienceYears /
+                employer.requiredExperience
+              ) * 100
+            );
 
         }
 
       }
 
-      // final score
-      const finalScore = Math.round(
-        (keywordScore * 0.8) +
-        (experienceScore * 0.2)
-      );
+      const finalScore =
+        Math.round(
+          (keywordScore * 0.8) +
+          (experienceScore * 0.2)
+        );
 
       if (finalScore >= 30) {
 
@@ -523,11 +544,14 @@ app.post("/match", async (req, res) => {
 
           phone: candidate.phone,
 
-          education: candidate.education,
+          education:
+            candidate.education,
 
-          skills: candidate.skills,
+          skills:
+            candidate.skills,
 
-          experience: candidate.experience,
+          experience:
+            candidate.experience,
 
           experienceYears:
             candidate.experienceYears || 0,
@@ -537,8 +561,8 @@ app.post("/match", async (req, res) => {
           matchedKeywords:
             matched.slice(0, 20),
 
-	resumeText:
-   	 candidate.resumeText || ""
+          resumeText:
+            candidate.resumeText || ""
 
         });
 
@@ -546,13 +570,18 @@ app.post("/match", async (req, res) => {
 
     }
 
-    results.sort((a, b) => b.score - a.score);
+    results.sort(
+      (a, b) => b.score - a.score
+    );
 
     res.json(results);
 
   } catch (err) {
 
-    console.log(err);
+    console.log(
+      "MATCH ERROR:",
+      err
+    );
 
     res.status(500).json({
       msg: "AI Matching failed ❌"
@@ -562,26 +591,30 @@ app.post("/match", async (req, res) => {
 
 });
 
-
 /* Candidates */
 app.get("/candidates", async (req, res) => {
 
-  const users = await User.find({
-    role: "candidate"
-  });
+  const users =
+    await User.find({
+      role: "candidate"
+    });
 
   res.json(users);
-});
 
+});
 
 /* Test */
 app.get("/", (req, res) => {
   res.send("Backend running ✅");
 });
 
-
-const PORT = process.env.PORT || 5000;
+const PORT =
+  process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-  console.log(`Server running on ${PORT}`);
+
+  console.log(
+    `Server running on ${PORT}`
+  );
+
 });
