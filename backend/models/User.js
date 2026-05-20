@@ -28,7 +28,6 @@ const UserSchema = new mongoose.Schema({
 
   resetTokenExpiry: Date,
 
-  // 🔥 NEW
   experienceYears: {
     type: Number,
     default: 0
@@ -37,6 +36,12 @@ const UserSchema = new mongoose.Schema({
   requiredExperience: {
     type: Number,
     default: 0
+  },
+
+  // 🔥 NEW
+  resumeText: {
+    type: String,
+    default: ""
   }
 
 });

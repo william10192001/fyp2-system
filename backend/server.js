@@ -313,7 +313,11 @@ const experienceYears =
   { email: req.body.email },
   {
     resumeKeywords: keywords,
-    experienceYears: experienceYears
+
+    experienceYears: experienceYears,
+
+    // 🔥 save full resume text
+    resumeText: text
   }
 );
 
@@ -535,6 +539,9 @@ app.post("/match", async (req, res) => {
 
           matchedKeywords:
             matched.slice(0, 20)
+
+	resumeText:
+   	 candidate.resumeText || ""
 
         });
 
