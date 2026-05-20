@@ -38,7 +38,6 @@ const UserSchema = new mongoose.Schema({
     default: 0
   },
 
-  // 🔥 NEW
   resumeText: {
     type: String,
     default: ""
