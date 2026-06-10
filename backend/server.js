@@ -718,6 +718,81 @@ app.post("/upload-job-pdf", upload.single("file"), async (req, res) => {
   }
 });
 
+const Application = require("./models/Application");
+
+/* ── Apply to Job ── */
+app.post("/apply", async (req, res) => {
+  try {
+    const { jobId, candidateEmail } = req.body;
+    const job = await Job.findById(jobId);
+    if (!job) return res.status(404).json({ msg: "Job not found" });
+    const candidate = await User.findOne({ email: candidateEmail });
+    if (!candidate) return res.status(404).json({ msg: "Candidate not found" });
+
+    const existing = await Application.findOne({ jobId, candidateEmail });
+    if (existing) return res.status(400).json({ msg: "You have already applied to this job" });
+
+    const application = new Application({
+      jobId,
+      jobTitle:       job.jobTitle,
+      candidateEmail,
+      candidateName:  candidate.name || candidateEmail,
+      employerEmail:  job.employerEmail
+    });
+    await application.save();
+    res.json({ msg: "Applied successfully ✅" });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ msg: "Apply failed ❌" });
+  }
+});
+
+/* ── Get Applications for a Job (Employer) ── */
+app.get("/applications/:jobId", async (req, res) => {
+  try {
+    const apps = await Application.find({ jobId: req.params.jobId }).sort({ createdAt: -1 });
+    res.json(apps);
+  } catch (err) {
+    res.status(500).json({ msg: "Fetch failed" });
+  }
+});
+
+/* ── Get My Applications (Candidate) ── */
+app.get("/my-applications/:email", async (req, res) => {
+  try {
+    const apps = await Application.find({ candidateEmail: req.params.email }).sort({ createdAt: -1 });
+    res.json(apps);
+  } catch (err) {
+    res.status(500).json({ msg: "Fetch failed" });
+  }
+});
+
+/* ── Toggle Save Job ── */
+app.post("/toggle-save-job", async (req, res) => {
+  try {
+    const { jobId, candidateEmail, action } = req.body;
+    const update = action === "save"
+      ? { $addToSet: { savedJobs: jobId } }
+      : { $pull:     { savedJobs: jobId } };
+    await User.findOneAndUpdate({ email: candidateEmail }, update);
+    res.json({ msg: action === "save" ? "Job saved ✅" : "Job unsaved" });
+  } catch (err) {
+    res.status(500).json({ msg: "Operation failed" });
+  }
+});
+
+/* ── Get Saved Jobs (Candidate) ── */
+app.get("/saved-jobs/:email", async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.params.email });
+    if (!user) return res.status(404).json({ msg: "User not found" });
+    const jobs = await Job.find({ _id: { $in: user.savedJobs || [] } });
+    res.json(jobs);
+  } catch (err) {
+    res.status(500).json({ msg: "Fetch failed" });
+  }
+});
+
 /* Candidates */
 app.get("/candidates", async (req, res) => {
 

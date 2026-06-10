@@ -19,7 +19,8 @@ const UserSchema = new mongoose.Schema({
   resetTokenExpiry: Date,
   experienceYears:    { type: Number, default: 0 },
   requiredExperience: { type: Number, default: 0 },
-  resumeText: { type: String, default: "" }
-}, { timestamps: true });   // ← timestamps 用来算「几天前发布」
+  resumeText:  { type: String, default: "" },
+  savedJobs:   [{ type: String }]
+}, { timestamps: true });
 
 module.exports = mongoose.model("User", UserSchema);
