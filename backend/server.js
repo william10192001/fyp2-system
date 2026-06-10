@@ -13,6 +13,7 @@ const multer = require("multer");
 const pdf = require("pdf-parse");
 
 const User = require("./models/User");
+const Job = require("./models/Job");
 
 const app = express();
 
@@ -424,13 +425,12 @@ app.post("/job", async (req, res) => {
 
 app.post("/match", async (req, res) => {
   try {
-    const { employerEmail } = req.body;
+    const { jobId } = req.body;
 
-    const employer = await User.findOne({ email: employerEmail });
-    if (!employer) return res.status(404).json({ msg: "Employer not found" });
+    const job = await Job.findById(jobId);
+    if (!job) return res.status(404).json({ msg: "Job not found" });
 
     const candidates = await User.find({ role: "candidate" });
-
     let results = [];
 
     for (let candidate of candidates) {
@@ -440,7 +440,7 @@ app.post("/match", async (req, res) => {
 You are an expert recruitment AI. Analyze the match between this job and candidate.
 
 JOB DESCRIPTION:
-${employer.jobDescription || "Not provided"}
+${job.jobDescription || "Not provided"}
 
 CANDIDATE PROFILE:
 Name: ${candidate.name || "Unknown"}
@@ -458,7 +458,6 @@ Return ONLY a JSON object, no markdown, no explanation:
   "recommendation": "Perfect Match or Good Match or Partial Match or Weak Match"
 }
 `;
-
       try {
         const aiRes = await groq.chat.completions.create({
           model: "llama-3.3-70b-versatile",
@@ -466,25 +465,17 @@ Return ONLY a JSON object, no markdown, no explanation:
           max_tokens: 500,
           temperature: 0.3
         });
-
         const raw     = aiRes.choices[0].message.content.trim();
         const cleaned = raw.replace(/```json/g, "").replace(/```/g, "").trim();
         const parsed  = JSON.parse(cleaned);
 
         if (parsed.score >= 20) {
           results.push({
-            name:            candidate.name,
-            email:           candidate.email,
-            phone:           candidate.phone,
-            education:       candidate.education,
-            skills:          candidate.skills,
-            experience:      candidate.experience,
-            score:           parsed.score,
-            matchedKeywords: parsed.matchedSkills  || [],
-            missingSkills:   parsed.missingSkills  || [],
-            summary:         parsed.summary        || "",
-            recommendation:  parsed.recommendation || "",
-            resumeText:      candidate.resumeText  || ""
+            name: candidate.name, email: candidate.email, phone: candidate.phone,
+            education: candidate.education, skills: candidate.skills, experience: candidate.experience,
+            score: parsed.score, matchedKeywords: parsed.matchedSkills || [],
+            missingSkills: parsed.missingSkills || [], summary: parsed.summary || "",
+            recommendation: parsed.recommendation || "", resumeText: candidate.resumeText || ""
           });
         }
       } catch (aiErr) {
@@ -494,84 +485,6 @@ Return ONLY a JSON object, no markdown, no explanation:
 
     results.sort((a, b) => b.score - a.score);
     res.json(results);
-
-  } catch (err) {
-    console.log("MATCH ERROR:", err);
-    res.status(500).json({ msg: "AI Matching failed ❌" });
-  }
-});app.post("/match", async (req, res) => {
-  try {
-    const { employerEmail } = req.body;
-
-    const employer = await User.findOne({ email: employerEmail });
-    if (!employer) return res.status(404).json({ msg: "Employer not found" });
-
-    const candidates = await User.find({ role: "candidate" });
-
-    let results = [];
-
-    for (let candidate of candidates) {
-      if (!candidate.resumeText && !candidate.skills) continue;
-
-      const prompt = `
-You are an expert recruitment AI. Analyze the match between this job and candidate.
-
-JOB DESCRIPTION:
-${employer.jobDescription || "Not provided"}
-
-CANDIDATE PROFILE:
-Name: ${candidate.name || "Unknown"}
-Skills: ${candidate.skills || "Not provided"}
-Experience: ${candidate.experience || "Not provided"}
-Education: ${candidate.education || "Not provided"}
-Resume Text: ${(candidate.resumeText || "").substring(0, 1000)}
-
-Return ONLY a JSON object, no markdown, no explanation:
-{
-  "score": <0-100 integer>,
-  "matchedSkills": ["skill1", "skill2"],
-  "missingSkills": ["skill3"],
-  "summary": "<2 sentence summary of fit>",
-  "recommendation": "Perfect Match or Good Match or Partial Match or Weak Match"
-}
-`;
-
-      try {
-        const aiRes = await groq.chat.completions.create({
-          model: "llama-3.3-70b-versatile",
-          messages: [{ role: "user", content: prompt }],
-          max_tokens: 500,
-          temperature: 0.3
-        });
-
-        const raw     = aiRes.choices[0].message.content.trim();
-        const cleaned = raw.replace(/```json/g, "").replace(/```/g, "").trim();
-        const parsed  = JSON.parse(cleaned);
-
-        if (parsed.score >= 20) {
-          results.push({
-            name:            candidate.name,
-            email:           candidate.email,
-            phone:           candidate.phone,
-            education:       candidate.education,
-            skills:          candidate.skills,
-            experience:      candidate.experience,
-            score:           parsed.score,
-            matchedKeywords: parsed.matchedSkills  || [],
-            missingSkills:   parsed.missingSkills  || [],
-            summary:         parsed.summary        || "",
-            recommendation:  parsed.recommendation || "",
-            resumeText:      candidate.resumeText  || ""
-          });
-        }
-      } catch (aiErr) {
-        console.log("AI error for candidate:", candidate.email, aiErr.message);
-      }
-    }
-
-    results.sort((a, b) => b.score - a.score);
-    res.json(results);
-
   } catch (err) {
     console.log("MATCH ERROR:", err);
     res.status(500).json({ msg: "AI Matching failed ❌" });
@@ -582,72 +495,86 @@ Return ONLY a JSON object, no markdown, no explanation:
 app.post("/match-jobs", async (req, res) => {
   try {
     const { candidateEmail } = req.body;
-
     const candidate = await User.findOne({ email: candidateEmail });
     if (!candidate) return res.status(404).json({ msg: "Candidate not found" });
 
-    const employers = await User.find({
-      role: "employer",
-      jobDescription: { $exists: true, $ne: "" }
-    });
-
+    const jobs = await Job.find({ status: "active" });
     const resumeWords = candidate.resumeKeywords || [];
     const results = [];
 
-    for (let employer of employers) {
-      const jobKeywords = employer.jobKeywords || [];
-
+    for (let job of jobs) {
+      const jobKeywords = job.jobKeywords || [];
       let matched = [];
       for (let rw of resumeWords) {
         for (let jw of jobKeywords) {
-          if (rw.toLowerCase().trim() === jw.toLowerCase().trim() && !matched.includes(rw)) {
-            matched.push(rw);
-          }
+          if (rw.toLowerCase().trim() === jw.toLowerCase().trim() && !matched.includes(rw)) matched.push(rw);
         }
       }
-
-      const keywordScore = jobKeywords.length > 0
-        ? Math.round((matched.length / jobKeywords.length) * 100)
-        : 0;
-
+      const keywordScore = jobKeywords.length > 0 ? Math.round((matched.length / jobKeywords.length) * 100) : 0;
       let experienceScore = 0;
-      if (employer.requiredExperience > 0) {
-        experienceScore = candidate.experienceYears >= employer.requiredExperience
-          ? 100
-          : Math.round((candidate.experienceYears / employer.requiredExperience) * 100);
+      if (job.requiredExperience > 0) {
+        experienceScore = candidate.experienceYears >= job.requiredExperience
+          ? 100 : Math.round((candidate.experienceYears / job.requiredExperience) * 100);
       }
-
       const finalScore = Math.round(keywordScore * 0.8 + experienceScore * 0.2);
-
-      const daysAgo = employer.updatedAt
-        ? Math.floor((Date.now() - new Date(employer.updatedAt)) / 86400000)
-        : 0;
-
-      const recommendation =
-        finalScore >= 70 ? "Perfect Match" :
-        finalScore >= 50 ? "Good Match" :
-        finalScore >= 30 ? "Partial Match" : "Weak Match";
+      const daysAgo = job.updatedAt ? Math.floor((Date.now() - new Date(job.updatedAt)) / 86400000) : 0;
+      const recommendation = finalScore >= 70 ? "Perfect Match" : finalScore >= 50 ? "Good Match" : finalScore >= 30 ? "Partial Match" : "Weak Match";
 
       results.push({
-        jobId:        employer._id.toString(),
-        employerEmail: employer.email,
-        jobTitle:     employer.jobTitle    || "Job Opening",
-        companyName:  employer.companyName || employer.email,
-        location:     employer.location    || "Not specified",
-        jobDescription: employer.jobDescription || "",
-        daysAgo,
-        score: finalScore,
-        matchedSkills: matched.slice(0, 15),
-        recommendation
+        jobId: job._id.toString(), employerEmail: job.employerEmail,
+        jobTitle: job.jobTitle || "Job Opening", companyName: job.companyName || job.employerEmail,
+        location: job.location || "Not specified", jobDescription: job.jobDescription || "",
+        daysAgo, score: finalScore, matchedSkills: matched.slice(0, 15), recommendation
       });
     }
-
     results.sort((a, b) => b.score - a.score);
     res.json(results);
-
   } catch (err) {
     console.log("MATCH-JOBS ERROR:", err);
     res.status(500).json({ msg: "Failed to get job matches" });
+  }
+});
+
+app.post("/analyze-job-match", async (req, res) => {
+  try {
+    const { candidateEmail, jobId } = req.body;
+    const candidate = await User.findOne({ email: candidateEmail });
+    const job       = await Job.findById(jobId);   // ← 改用 Job 集合
+    if (!candidate || !job) return res.status(404).json({ msg: "Not found" });
+
+    const prompt = `
+You are an expert recruitment AI. Analyze how well this candidate matches the job.
+
+JOB TITLE: ${job.jobTitle || "Job Opening"}
+JOB DESCRIPTION: ${job.jobDescription || "Not provided"}
+
+CANDIDATE:
+Name: ${candidate.name || "Unknown"}
+Skills: ${candidate.skills || "Not provided"}
+Experience: ${candidate.experience || "Not provided"}
+Education: ${candidate.education || "Not provided"}
+Resume: ${(candidate.resumeText || "").substring(0, 1200)}
+
+Return ONLY valid JSON, no markdown:
+{
+  "score": <0-100 integer>,
+  "matchedSkills": ["skill1", "skill2"],
+  "missingSkills": ["skill3", "skill4"],
+  "summary": "<2 sentence analysis>",
+  "recommendation": "Perfect Match or Good Match or Partial Match or Weak Match"
+}
+`;
+    const aiRes = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 500, temperature: 0.3
+    });
+    const raw     = aiRes.choices[0].message.content.trim();
+    const cleaned = raw.replace(/```json/g, "").replace(/```/g, "").trim();
+    res.json(JSON.parse(cleaned));
+  } catch (err) {
+    console.log("ANALYZE ERROR:", err.message);
+    res.status(500).json({ msg: "Analysis failed" });
   }
 });
 
@@ -698,6 +625,96 @@ Return ONLY valid JSON, no markdown, no preamble:
   } catch (err) {
     console.log("ANALYZE ERROR:", err.message);
     res.status(500).json({ msg: "Analysis failed" });
+  }
+});
+
+/* ── Create Job ── */
+app.post("/job/create", async (req, res) => {
+  try {
+    const { employerEmail, jobTitle, companyName, location, jobDescription } = req.body;
+    if (!jobTitle || !jobDescription) return res.status(400).json({ msg: "Title and description required" });
+
+    const expMatch = jobDescription.match(/(\d+)\+?\s+years?/i);
+    const requiredExperience = expMatch ? parseInt(expMatch[1]) : 0;
+
+    const tokenizer = new natural.WordTokenizer();
+    const rawWords  = tokenizer.tokenize(jobDescription.toLowerCase());
+    const stopwords = ["the","and","is","in","to","of","for","on","with","a","an","or","by","at","from"];
+    const keywords  = [...new Set(rawWords.filter(w =>
+      !stopwords.includes(w) && w.length > 2 && !/^\d+$/.test(w) && /^[a-zA-Z+#.]+$/.test(w)
+    ))];
+
+    const job = new Job({ employerEmail, jobTitle, companyName: companyName||"", location: location||"", jobDescription, jobKeywords: keywords, requiredExperience });
+    await job.save();
+    res.json({ msg: "Job created ✅", job });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ msg: "Create failed ❌" });
+  }
+});
+
+/* ── Get Jobs by Employer ── */
+app.get("/jobs/:email", async (req, res) => {
+  try {
+    const jobs = await Job.find({ employerEmail: req.params.email }).sort({ createdAt: -1 });
+    res.json(jobs);
+  } catch (err) {
+    res.status(500).json({ msg: "Fetch failed ❌" });
+  }
+});
+
+/* ── Update Job ── */
+app.put("/job/:id", async (req, res) => {
+  try {
+    const { jobTitle, companyName, location, jobDescription } = req.body;
+
+    const expMatch = jobDescription.match(/(\d+)\+?\s+years?/i);
+    const requiredExperience = expMatch ? parseInt(expMatch[1]) : 0;
+
+    const tokenizer = new natural.WordTokenizer();
+    const rawWords  = tokenizer.tokenize(jobDescription.toLowerCase());
+    const stopwords = ["the","and","is","in","to","of","for","on","with","a","an","or","by","at","from"];
+    const keywords  = [...new Set(rawWords.filter(w =>
+      !stopwords.includes(w) && w.length > 2 && !/^\d+$/.test(w) && /^[a-zA-Z+#.]+$/.test(w)
+    ))];
+
+    await Job.findByIdAndUpdate(req.params.id, { jobTitle, companyName: companyName||"", location: location||"", jobDescription, jobKeywords: keywords, requiredExperience });
+    res.json({ msg: "Job updated ✅" });
+  } catch (err) {
+    res.status(500).json({ msg: "Update failed ❌" });
+  }
+});
+
+/* ── Delete Job ── */
+app.delete("/job/:id", async (req, res) => {
+  try {
+    await Job.findByIdAndDelete(req.params.id);
+    res.json({ msg: "Job deleted ✅" });
+  } catch (err) {
+    res.status(500).json({ msg: "Delete failed ❌" });
+  }
+});
+
+/* ── Upload Job PDF ── */
+app.post("/upload-job-pdf", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ msg: "No file uploaded" });
+
+    const data = await pdf(req.file.buffer);
+    const text = data.text || "";
+    if (text.trim().length < 30) return res.status(400).json({ msg: "PDF has no readable text ❌" });
+
+    const tokenizer = new natural.WordTokenizer();
+    const rawWords  = tokenizer.tokenize(text.toLowerCase());
+    const stopwords = ["the","and","is","in","to","of","for","on","with","a","an","or","by","at","from"];
+    const keywords  = [...new Set(rawWords.filter(w =>
+      !stopwords.includes(w) && w.length > 2 && !/^\d+$/.test(w) && /^[a-zA-Z+#.]+$/.test(w)
+    ))];
+
+    res.json({ msg: "PDF processed ✅", text: text.substring(0, 5000), keywords, totalKeywords: keywords.length });
+  } catch (err) {
+    console.log("UPLOAD-JOB-PDF ERROR:", err);
+    res.status(500).json({ msg: "Upload failed ❌" });
   }
 });
 
