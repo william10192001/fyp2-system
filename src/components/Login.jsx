@@ -1,9 +1,8 @@
 ﻿import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-function Login({ onLogin, goRegister }) {
+function Login({ onLogin }) {
   const navigate = useNavigate();
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -32,21 +31,21 @@ function Login({ onLogin, goRegister }) {
 
         <button
           onClick={submit}
-          className="w-full bg-blue-500 py-2 rounded"
+          className="w-full bg-blue-500 py-2 rounded font-semibold"
         >
           Login
         </button>
 
         <p
-          onClick={goRegister}
-          className="mt-4 text-center text-sm cursor-pointer text-blue-400"
+          onClick={() => navigate("/register")}
+          className="mt-4 text-center text-sm cursor-pointer text-blue-400 hover:underline"
         >
           Go Register
         </p>
 
         <p
           onClick={() => navigate("/forgot")}
-          className="mt-2 text-sm text-red-400 cursor-pointer text-center"
+          className="mt-2 text-sm text-red-400 cursor-pointer text-center hover:underline"
         >
           Forgot Password?
         </p>

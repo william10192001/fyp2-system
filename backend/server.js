@@ -421,9 +421,6 @@ app.post("/job", async (req, res) => {
   }
 });
 
-/* AI Matching */
-const Anthropic = require("@anthropic-ai/sdk");
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 app.post("/match", async (req, res) => {
   try {
@@ -437,7 +434,6 @@ app.post("/match", async (req, res) => {
     let results = [];
 
     for (let candidate of candidates) {
-
       if (!candidate.resumeText && !candidate.skills) continue;
 
       const prompt = `
@@ -451,42 +447,121 @@ Name: ${candidate.name || "Unknown"}
 Skills: ${candidate.skills || "Not provided"}
 Experience: ${candidate.experience || "Not provided"}
 Education: ${candidate.education || "Not provided"}
-Resume Text: ${(candidate.resumeText || "").substring(0, 1500)}
+Resume Text: ${(candidate.resumeText || "").substring(0, 1000)}
 
-Return ONLY a JSON object (no markdown, no explanation):
+Return ONLY a JSON object, no markdown, no explanation:
 {
   "score": <0-100 integer>,
   "matchedSkills": ["skill1", "skill2"],
   "missingSkills": ["skill3"],
   "summary": "<2 sentence summary of fit>",
-  "recommendation": "Strong Match" | "Good Match" | "Partial Match" | "Weak Match"
+  "recommendation": "Perfect Match or Good Match or Partial Match or Weak Match"
 }
 `;
 
       try {
-        const aiRes = await client.messages.create({
-          model: "claude-sonnet-4-20250514",
+        const aiRes = await groq.chat.completions.create({
+          model: "llama-3.3-70b-versatile",
+          messages: [{ role: "user", content: prompt }],
           max_tokens: 500,
-          messages: [{ role: "user", content: prompt }]
+          temperature: 0.3
         });
 
-        const raw = aiRes.content[0].text.trim();
-        const parsed = JSON.parse(raw);
+        const raw     = aiRes.choices[0].message.content.trim();
+        const cleaned = raw.replace(/```json/g, "").replace(/```/g, "").trim();
+        const parsed  = JSON.parse(cleaned);
 
         if (parsed.score >= 20) {
           results.push({
-            name: candidate.name,
-            email: candidate.email,
-            phone: candidate.phone,
-            education: candidate.education,
-            skills: candidate.skills,
-            experience: candidate.experience,
-            score: parsed.score,
-            matchedKeywords: parsed.matchedSkills || [],
-            missingSkills: parsed.missingSkills || [],
-            summary: parsed.summary || "",
-            recommendation: parsed.recommendation || "",
-            resumeText: candidate.resumeText || ""
+            name:            candidate.name,
+            email:           candidate.email,
+            phone:           candidate.phone,
+            education:       candidate.education,
+            skills:          candidate.skills,
+            experience:      candidate.experience,
+            score:           parsed.score,
+            matchedKeywords: parsed.matchedSkills  || [],
+            missingSkills:   parsed.missingSkills  || [],
+            summary:         parsed.summary        || "",
+            recommendation:  parsed.recommendation || "",
+            resumeText:      candidate.resumeText  || ""
+          });
+        }
+      } catch (aiErr) {
+        console.log("AI error for candidate:", candidate.email, aiErr.message);
+      }
+    }
+
+    results.sort((a, b) => b.score - a.score);
+    res.json(results);
+
+  } catch (err) {
+    console.log("MATCH ERROR:", err);
+    res.status(500).json({ msg: "AI Matching failed ❌" });
+  }
+});app.post("/match", async (req, res) => {
+  try {
+    const { employerEmail } = req.body;
+
+    const employer = await User.findOne({ email: employerEmail });
+    if (!employer) return res.status(404).json({ msg: "Employer not found" });
+
+    const candidates = await User.find({ role: "candidate" });
+
+    let results = [];
+
+    for (let candidate of candidates) {
+      if (!candidate.resumeText && !candidate.skills) continue;
+
+      const prompt = `
+You are an expert recruitment AI. Analyze the match between this job and candidate.
+
+JOB DESCRIPTION:
+${employer.jobDescription || "Not provided"}
+
+CANDIDATE PROFILE:
+Name: ${candidate.name || "Unknown"}
+Skills: ${candidate.skills || "Not provided"}
+Experience: ${candidate.experience || "Not provided"}
+Education: ${candidate.education || "Not provided"}
+Resume Text: ${(candidate.resumeText || "").substring(0, 1000)}
+
+Return ONLY a JSON object, no markdown, no explanation:
+{
+  "score": <0-100 integer>,
+  "matchedSkills": ["skill1", "skill2"],
+  "missingSkills": ["skill3"],
+  "summary": "<2 sentence summary of fit>",
+  "recommendation": "Perfect Match or Good Match or Partial Match or Weak Match"
+}
+`;
+
+      try {
+        const aiRes = await groq.chat.completions.create({
+          model: "llama-3.3-70b-versatile",
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: 500,
+          temperature: 0.3
+        });
+
+        const raw     = aiRes.choices[0].message.content.trim();
+        const cleaned = raw.replace(/```json/g, "").replace(/```/g, "").trim();
+        const parsed  = JSON.parse(cleaned);
+
+        if (parsed.score >= 20) {
+          results.push({
+            name:            candidate.name,
+            email:           candidate.email,
+            phone:           candidate.phone,
+            education:       candidate.education,
+            skills:          candidate.skills,
+            experience:      candidate.experience,
+            score:           parsed.score,
+            matchedKeywords: parsed.matchedSkills  || [],
+            missingSkills:   parsed.missingSkills  || [],
+            summary:         parsed.summary        || "",
+            recommendation:  parsed.recommendation || "",
+            resumeText:      candidate.resumeText  || ""
           });
         }
       } catch (aiErr) {
