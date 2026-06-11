@@ -14,6 +14,7 @@ const MS = {
 function CandidateDashboard({ user, logout }) {
   const [activeTab,    setActiveTab]    = useState("jobs");
   const [jobs,         setJobs]         = useState([]);
+  const [filteredJobs, setFilteredJobs] = useState([]);
   const [selectedJob,  setSelectedJob]  = useState(null);
   const [aiAnalysis,   setAiAnalysis]   = useState(null);
   const [loadingJobs,  setLoadingJobs]  = useState(false);
@@ -24,14 +25,18 @@ function CandidateDashboard({ user, logout }) {
   const [appliedJobs,  setAppliedJobs]  = useState([]);
   const [applyingId,   setApplyingId]   = useState(null);
 
-  /* ── Fetch candidate's own data ── */
+  // Filter states
+  const [filterOpen,      setFilterOpen]      = useState(false);
+  const [filterMatch,     setFilterMatch]      = useState("All");
+  const [filterLocation,  setFilterLocation]   = useState("");
+  const [filterKeyword,   setFilterKeyword]    = useState("");
+
   const fetchMyData = () => {
     fetch(`${BASE}/candidates`)
       .then(r => r.json())
       .then(data => setMyData(data.find(c => c.email === user.email)));
   };
 
-  /* ── Load applied + saved from DB ── */
   const fetchAppliedAndSaved = async () => {
     try {
       const [appRes, savedRes] = await Promise.all([
@@ -40,12 +45,11 @@ function CandidateDashboard({ user, logout }) {
       ]);
       const appData   = await appRes.json();
       const savedData = await savedRes.json();
-      setAppliedJobs(Array.isArray(appData)   ? appData.map(a => a.jobId)          : []);
+      setAppliedJobs(Array.isArray(appData)   ? appData.map(a => a.jobId)            : []);
       setSavedJobs(Array.isArray(savedData)   ? savedData.map(j => j._id.toString()) : []);
     } catch (err) { console.log(err); }
   };
 
-  /* ── Fetch matched jobs ── */
   const fetchJobs = async () => {
     setLoadingJobs(true);
     try {
@@ -56,12 +60,40 @@ function CandidateDashboard({ user, logout }) {
       });
       const data = await res.json();
       setJobs(data);
+      setFilteredJobs(data);
       if (data.length > 0) selectJob(data[0]);
     } catch (e) { console.log(e); }
     setLoadingJobs(false);
   };
 
-  /* ── Select + AI-analyze a job ── */
+  // Apply filters
+  const applyFilters = (matchFilter, locationFilter, keywordFilter, jobList) => {
+    let result = jobList || jobs;
+    if (matchFilter && matchFilter !== "All") {
+      result = result.filter(j => j.recommendation === matchFilter);
+    }
+    if (locationFilter.trim()) {
+      result = result.filter(j => (j.location || "").toLowerCase().includes(locationFilter.toLowerCase()));
+    }
+    if (keywordFilter.trim()) {
+      result = result.filter(j =>
+        (j.jobTitle || "").toLowerCase().includes(keywordFilter.toLowerCase()) ||
+        (j.jobDescription || "").toLowerCase().includes(keywordFilter.toLowerCase())
+      );
+    }
+    setFilteredJobs(result);
+  };
+
+  const clearFilters = () => {
+    setFilterMatch("All");
+    setFilterLocation("");
+    setFilterKeyword("");
+    setFilteredJobs(jobs);
+    setFilterOpen(false);
+  };
+
+  const hasActiveFilters = filterMatch !== "All" || filterLocation.trim() || filterKeyword.trim();
+
   const selectJob = async (job) => {
     setSelectedJob(job);
     setAiAnalysis(null);
@@ -74,12 +106,15 @@ function CandidateDashboard({ user, logout }) {
         body: JSON.stringify({ candidateEmail: user.email, jobId: job.jobId })
       });
       const data = await res.json();
+      // ✅ Update the job's score in the list to match AI score
+      setJobs(prev => prev.map(j => j.jobId === job.jobId ? { ...j, score: data.score, recommendation: data.recommendation } : j));
+      setFilteredJobs(prev => prev.map(j => j.jobId === job.jobId ? { ...j, score: data.score, recommendation: data.recommendation } : j));
+      setSelectedJob(prev => ({ ...prev, score: data.score, recommendation: data.recommendation }));
       setAiAnalysis(data);
     } catch (e) { console.log(e); }
     setAnalyzing(false);
   };
 
-  /* ── Apply to job ── */
   const applyToJob = async (job) => {
     if (appliedJobs.includes(job.jobId)) return;
     setApplyingId(job.jobId);
@@ -92,7 +127,6 @@ function CandidateDashboard({ user, logout }) {
       const data = await res.json();
       if (res.ok) {
         setAppliedJobs(prev => [...prev, job.jobId]);
-        alert(`Successfully applied to "${job.jobTitle}" ✅\nThe employer has been notified.`);
       } else {
         alert(data.msg);
       }
@@ -100,7 +134,6 @@ function CandidateDashboard({ user, logout }) {
     setApplyingId(null);
   };
 
-  /* ── Save / unsave job ── */
   const toggleSaveJob = async (jobId) => {
     const isSaved = savedJobs.includes(jobId);
     const action  = isSaved ? "unsave" : "save";
@@ -161,11 +194,11 @@ function CandidateDashboard({ user, logout }) {
       {/* ── TABS ── */}
       <div style={{ background: "white", borderBottom: "1px solid #e5e7eb", padding: "0 32px", display: "flex" }}>
         {[
-          { key: "jobs",       label: "🎯 Job Matches"    },
-          { key: "applied",    label: "✅ My Applications" },
-          { key: "saved",      label: "🔖 Saved Jobs"      },
-          { key: "profile",    label: "👤 My Profile"      },
-          { key: "resume",     label: "📄 Resume Upload"   },
+          { key: "jobs",    label: "🎯 Job Matches"     },
+          { key: "applied", label: "✅ My Applications"  },
+          { key: "saved",   label: "🔖 Saved Jobs"       },
+          { key: "profile", label: "👤 My Profile"       },
+          { key: "resume",  label: "📄 Resume Upload"    },
         ].map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key)} style={{
             padding: "14px 18px", fontSize: 13, fontWeight: 500, cursor: "pointer",
@@ -179,14 +212,113 @@ function CandidateDashboard({ user, logout }) {
       {/* ════ JOB MATCHES ════ */}
       {activeTab === "jobs" && (
         <>
-          <div style={{ background: "white", borderBottom: "1px solid #e5e7eb", padding: "10px 32px", display: "flex", alignItems: "center", gap: 16 }}>
-            <button style={{ fontSize: 13, padding: "6px 12px", borderRadius: 6, border: "1px solid #d1d5db", background: "white", cursor: "pointer", color: "#374151" }}>
-              ⚡ All Filters
-            </button>
-            <button style={{ fontSize: 13, color: "#2563eb", background: "none", border: "none", cursor: "pointer" }}>Clear All</button>
+          {/* Filter Bar */}
+          <div style={{ background: "white", borderBottom: "1px solid #e5e7eb", padding: "10px 32px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            
+            {/* Filter Button */}
+            <div style={{ position: "relative" }}>
+              <button
+                onClick={() => setFilterOpen(!filterOpen)}
+                style={{
+                  fontSize: 13, padding: "7px 14px", borderRadius: 8,
+                  border: hasActiveFilters ? "1px solid #2563eb" : "1px solid #d1d5db",
+                  background: hasActiveFilters ? "#eff6ff" : "white",
+                  cursor: "pointer", color: hasActiveFilters ? "#2563eb" : "#374151",
+                  display: "flex", alignItems: "center", gap: 6, fontWeight: hasActiveFilters ? 600 : 400
+                }}
+              >
+                ⚡ Filters {hasActiveFilters && <span style={{ background: "#2563eb", color: "white", borderRadius: 99, fontSize: 10, padding: "1px 6px" }}>ON</span>}
+              </button>
+
+              {/* Dropdown Panel */}
+              {filterOpen && (
+                <div style={{
+                  position: "absolute", top: "calc(100% + 8px)", left: 0, zIndex: 100,
+                  background: "white", border: "1px solid #e5e7eb", borderRadius: 12,
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.12)", padding: 20, width: 280
+                }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: "#111827", marginBottom: 16 }}>Filter Jobs</div>
+
+                  {/* Match Type */}
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 6 }}>Match Level</label>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {["All", "Perfect Match", "Good Match", "Partial Match", "Weak Match"].map(m => (
+                        <button key={m} onClick={() => setFilterMatch(m)} style={{
+                          fontSize: 11, padding: "4px 10px", borderRadius: 99, cursor: "pointer",
+                          border: filterMatch === m ? "1px solid #2563eb" : "1px solid #e5e7eb",
+                          background: filterMatch === m ? "#eff6ff" : "white",
+                          color: filterMatch === m ? "#2563eb" : "#6b7280", fontWeight: filterMatch === m ? 600 : 400
+                        }}>{m}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Location */}
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 6 }}>Location</label>
+                    <input
+                      placeholder="e.g. Johor Bahru"
+                      value={filterLocation}
+                      onChange={e => setFilterLocation(e.target.value)}
+                      style={{ width: "100%", border: "1px solid #e5e7eb", borderRadius: 8, padding: "7px 10px", fontSize: 12, outline: "none", boxSizing: "border-box" }}
+                    />
+                  </div>
+
+                  {/* Keyword */}
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 6 }}>Job Title / Keyword</label>
+                    <input
+                      placeholder="e.g. React, Python..."
+                      value={filterKeyword}
+                      onChange={e => setFilterKeyword(e.target.value)}
+                      style={{ width: "100%", border: "1px solid #e5e7eb", borderRadius: 8, padding: "7px 10px", fontSize: 12, outline: "none", boxSizing: "border-box" }}
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={() => { applyFilters(filterMatch, filterLocation, filterKeyword); setFilterOpen(false); }}
+                      style={{ flex: 1, background: "#2563eb", color: "white", border: "none", borderRadius: 8, padding: "8px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                    >Apply Filters</button>
+                    <button
+                      onClick={clearFilters}
+                      style={{ flex: 1, background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 8, padding: "8px", fontSize: 12, cursor: "pointer" }}
+                    >Clear All</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Active filter chips */}
+            {filterMatch !== "All" && (
+              <span style={{ background: "#eff6ff", color: "#2563eb", fontSize: 11, padding: "4px 10px", borderRadius: 99, display: "flex", alignItems: "center", gap: 4 }}>
+                {filterMatch}
+                <span onClick={() => { setFilterMatch("All"); applyFilters("All", filterLocation, filterKeyword); }} style={{ cursor: "pointer", fontWeight: 700 }}>×</span>
+              </span>
+            )}
+            {filterLocation.trim() && (
+              <span style={{ background: "#eff6ff", color: "#2563eb", fontSize: 11, padding: "4px 10px", borderRadius: 99, display: "flex", alignItems: "center", gap: 4 }}>
+                📍 {filterLocation}
+                <span onClick={() => { setFilterLocation(""); applyFilters(filterMatch, "", filterKeyword); }} style={{ cursor: "pointer", fontWeight: 700 }}>×</span>
+              </span>
+            )}
+            {filterKeyword.trim() && (
+              <span style={{ background: "#eff6ff", color: "#2563eb", fontSize: 11, padding: "4px 10px", borderRadius: 99, display: "flex", alignItems: "center", gap: 4 }}>
+                🔍 {filterKeyword}
+                <span onClick={() => { setFilterKeyword(""); applyFilters(filterMatch, filterLocation, ""); }} style={{ cursor: "pointer", fontWeight: 700 }}>×</span>
+              </span>
+            )}
+
+            {hasActiveFilters && (
+              <button onClick={clearFilters} style={{ fontSize: 12, color: "#ef4444", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
+                Clear All
+              </button>
+            )}
+
             <div style={{ marginLeft: "auto", display: "flex", gap: 24, fontSize: 13, color: "#6b7280" }}>
-              <span><strong style={{ color: "#111827" }}>{jobs.length}</strong> Jobs</span>
-              <span>Sort: Match Score ↓</span>
+              <span><strong style={{ color: "#111827" }}>{filteredJobs.length}</strong> Jobs {hasActiveFilters && <span style={{ color: "#9ca3af" }}>/ {jobs.length} total</span>}</span>
+              <span>Sort: AI Score ↓</span>
             </div>
           </div>
 
@@ -200,13 +332,20 @@ function CandidateDashboard({ user, logout }) {
                   <p style={{ fontSize: 13 }}>Finding your best matches...</p>
                 </div>
               )}
-              {!loadingJobs && jobs.length === 0 && (
+              {!loadingJobs && filteredJobs.length === 0 && (
                 <div style={{ textAlign: "center", padding: "60px 20px", color: "#9ca3af" }}>
                   <div style={{ fontSize: 40, marginBottom: 10 }}>📭</div>
-                  <p style={{ fontSize: 13 }}>No jobs yet — upload your resume first</p>
+                  <p style={{ fontSize: 13 }}>
+                    {hasActiveFilters ? "No jobs match your filters. Try clearing them." : "No jobs yet — upload your resume first"}
+                  </p>
+                  {hasActiveFilters && (
+                    <button onClick={clearFilters} style={{ marginTop: 8, background: "#2563eb", color: "white", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 12, cursor: "pointer" }}>
+                      Clear Filters
+                    </button>
+                  )}
                 </div>
               )}
-              {!loadingJobs && jobs.map((job, i) => {
+              {!loadingJobs && filteredJobs.map((job, i) => {
                 const ms  = MS[job.recommendation] || MS["Weak Match"];
                 const sel = selectedJob?.jobId === job.jobId;
                 return (
@@ -221,9 +360,9 @@ function CandidateDashboard({ user, logout }) {
                         <span style={{ marginLeft: 6, fontSize: 10, background: "#dcfce7", color: "#16a34a", padding: "2px 6px", borderRadius: 99, fontWeight: 600 }}>Applied</span>
                       )}
                     </div>
-                    <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 2 }}>📍 {job.location}</div>
+                    <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 2 }}>📍 {job.location || "Not specified"}</div>
                     <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 12 }}>
-                      Posted {job.daysAgo === 0 ? "today" : job.daysAgo === 1 ? "yesterday" : `${job.daysAgo} days ago`}
+                      {job.daysAgo === 0 ? "Posted today" : job.daysAgo === 1 ? "Posted yesterday" : `Posted ${job.daysAgo} days ago`}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <svg width="20" height="20" viewBox="0 0 20 20">
@@ -232,6 +371,7 @@ function CandidateDashboard({ user, logout }) {
                         <circle cx="10" cy="10" r="3" fill={ms.hex}/>
                       </svg>
                       <span style={{ fontSize: 12, fontWeight: 600, color: ms.text }}>{job.recommendation}</span>
+                      <span style={{ marginLeft: "auto", fontSize: 11, color: ms.text, fontWeight: 700 }}>{job.score}%</span>
                     </div>
                   </div>
                 );
@@ -244,7 +384,7 @@ function CandidateDashboard({ user, logout }) {
 
                 <div style={{ padding: "32px 40px 24px", borderBottom: "1px solid #f3f4f6" }}>
                   <h1 style={{ fontSize: 22, fontWeight: 700, color: "#111827", marginBottom: 4 }}>{selectedJob.jobTitle}</h1>
-                  <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 4 }}>📍 {selectedJob.location}</div>
+                  <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 4 }}>📍 {selectedJob.location || "Not specified"}</div>
                   <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 20 }}>
                     🏢 {selectedJob.companyName || selectedJob.employerEmail}
                   </div>
@@ -255,7 +395,8 @@ function CandidateDashboard({ user, logout }) {
                       onClick={() => applyToJob(selectedJob)}
                       disabled={appliedJobs.includes(selectedJob.jobId) || applyingId === selectedJob.jobId}
                       style={{
-                        padding: "10px 24px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: appliedJobs.includes(selectedJob.jobId) ? "default" : "pointer",
+                        padding: "10px 24px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                        cursor: appliedJobs.includes(selectedJob.jobId) ? "default" : "pointer",
                         border: appliedJobs.includes(selectedJob.jobId) ? "2px solid #16a34a" : "2px solid #7c3aed",
                         color: appliedJobs.includes(selectedJob.jobId) ? "#16a34a" : "white",
                         background: appliedJobs.includes(selectedJob.jobId) ? "#f0fdf4" : "#7c3aed",
@@ -281,7 +422,10 @@ function CandidateDashboard({ user, logout }) {
                 {/* Match Visualization */}
                 <div style={{ padding: "20px 40px", borderBottom: "1px solid #f3f4f6" }}>
                   {analyzing ? (
-                    <div style={{ color: "#9ca3af", fontSize: 13 }}>🤖 AI is analyzing your match...</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#9ca3af", fontSize: 13 }}>
+                      <span style={{ width: 16, height: 16, border: "2px solid #e5e7eb", borderTopColor: "#2563eb", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }}/>
+                      🤖 AI is analyzing your match... this may take a moment
+                    </div>
                   ) : (() => {
                     const d   = aiAnalysis || selectedJob;
                     const rec = d.recommendation || selectedJob.recommendation;
@@ -297,7 +441,8 @@ function CandidateDashboard({ user, logout }) {
                             <circle cx="28" cy="28" r="9"  fill={ms.hex} opacity="0.5"/>
                             <circle cx="28" cy="28" r="5"  fill={ms.hex}/>
                           </svg>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: ms.text }}>{d.score || selectedJob.score}%</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: ms.text }}>{d.score || selectedJob.score}%</span>
+                          <span style={{ fontSize: 10, color: ms.text, opacity: 0.7 }}>AI Score</span>
                         </div>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 13, fontWeight: 700, color: ms.text, marginBottom: 10 }}>{rec}</div>
@@ -341,9 +486,13 @@ function CandidateDashboard({ user, logout }) {
                         <span style={{ fontWeight: 600, color: "#374151" }}>Company: </span>
                         <span style={{ color: "#6b7280" }}>{selectedJob.companyName || selectedJob.employerEmail}</span>
                       </div>
-                      <div>
+                      <div style={{ marginBottom: 12 }}>
                         <span style={{ fontWeight: 600, color: "#374151" }}>Location: </span>
-                        <span style={{ color: "#6b7280" }}>{selectedJob.location}</span>
+                        <span style={{ color: "#6b7280" }}>{selectedJob.location || "Not specified"}</span>
+                      </div>
+                      <div>
+                        <span style={{ fontWeight: 600, color: "#374151" }}>Contact: </span>
+                        <span style={{ color: "#6b7280" }}>{selectedJob.employerEmail}</span>
                       </div>
                     </div>
                   )}
@@ -362,9 +511,7 @@ function CandidateDashboard({ user, logout }) {
       )}
 
       {/* ════ MY APPLICATIONS ════ */}
-      {activeTab === "applied" && (
-        <AppliedTab email={user.email} />
-      )}
+      {activeTab === "applied" && <AppliedTab email={user.email} />}
 
       {/* ════ SAVED JOBS ════ */}
       {activeTab === "saved" && (
@@ -386,6 +533,8 @@ function CandidateDashboard({ user, logout }) {
           <ResumeUpload user={user} />
         </div>
       )}
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
@@ -393,56 +542,106 @@ function CandidateDashboard({ user, logout }) {
 /* ── Applied Jobs Tab ── */
 function AppliedTab({ email }) {
   const [apps, setApps] = useState([]);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    fetch(`https://fyp2-backend-gihc.onrender.com/my-applications/${email}`)
-      .then(r => r.json()).then(data => setApps(Array.isArray(data) ? data : []));
+    fetch(`${BASE}/my-applications/${email}`)
+      .then(r => r.json())
+      .then(data => { setApps(Array.isArray(data) ? data : []); setLoading(false); })
+      .catch(() => setLoading(false));
   }, [email]);
+
+  const statusColor = {
+    "pending":  { bg: "#dbeafe", color: "#1d4ed8", label: "Under Review" },
+    "accepted": { bg: "#dcfce7", color: "#16a34a", label: "Accepted ✓"  },
+    "rejected": { bg: "#fee2e2", color: "#dc2626", label: "Rejected"     },
+  };
 
   return (
     <div style={{ maxWidth: 720, margin: "32px auto", padding: "0 16px" }}>
-      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 20, color: "#111827" }}>My Applications ({apps.length})</h2>
-      {apps.length === 0 ? (
+      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 20, color: "#111827" }}>
+        My Applications ({apps.length})
+      </h2>
+      {loading ? (
+        <div style={{ textAlign: "center", padding: "60px 20px", color: "#9ca3af" }}>Loading...</div>
+      ) : apps.length === 0 ? (
         <div style={{ textAlign: "center", padding: "60px 20px", color: "#9ca3af" }}>
           <div style={{ fontSize: 40, marginBottom: 10 }}>📋</div>
           <p>You haven't applied to any jobs yet.</p>
+          <p style={{ fontSize: 12, marginTop: 8 }}>Go to Job Matches and click "Apply Now"!</p>
         </div>
-      ) : apps.map((a, i) => (
-        <div key={i} style={{ background: "white", borderRadius: 12, padding: "16px 20px", marginBottom: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <div style={{ fontWeight: 600, color: "#111827", fontSize: 14 }}>{a.jobTitle}</div>
-            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>Employer: {a.employerEmail}</div>
-            <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>Applied: {new Date(a.createdAt).toLocaleDateString()}</div>
+      ) : apps.map((a, i) => {
+        const s = statusColor[a.status] || statusColor["pending"];
+        return (
+          <div key={i} style={{ background: "white", borderRadius: 12, padding: "20px 24px", marginBottom: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontWeight: 600, color: "#111827", fontSize: 15 }}>{a.jobTitle || "Job Position"}</div>
+              <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>🏢 Employer: {a.employerEmail}</div>
+              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+                📅 Applied: {new Date(a.createdAt).toLocaleDateString("en-MY", { year: "numeric", month: "long", day: "numeric" })}
+              </div>
+            </div>
+            <span style={{ background: s.bg, color: s.color, fontSize: 12, fontWeight: 600, padding: "5px 14px", borderRadius: 99, flexShrink: 0, marginLeft: 16 }}>
+              {s.label}
+            </span>
           </div>
-          <span style={{ background: "#dbeafe", color: "#1d4ed8", fontSize: 11, fontWeight: 600, padding: "4px 12px", borderRadius: 99 }}>
-            {a.status === "pending" ? "Under Review" : a.status}
-          </span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
 /* ── Saved Jobs Tab ── */
-function SavedTab({ email }) {
+function SavedTab({ email, onSelect }) {
   const [saved, setSaved] = useState([]);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    fetch(`https://fyp2-backend-gihc.onrender.com/saved-jobs/${email}`)
-      .then(r => r.json()).then(data => setSaved(Array.isArray(data) ? data : []));
+    fetch(`${BASE}/saved-jobs/${email}`)
+      .then(r => r.json())
+      .then(data => { setSaved(Array.isArray(data) ? data : []); setLoading(false); })
+      .catch(() => setLoading(false));
   }, [email]);
+
+  const unsave = async (jobId) => {
+    await fetch(`${BASE}/toggle-save-job`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId, candidateEmail: email, action: "unsave" })
+    });
+    setSaved(prev => prev.filter(j => j._id.toString() !== jobId));
+  };
 
   return (
     <div style={{ maxWidth: 720, margin: "32px auto", padding: "0 16px" }}>
-      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 20, color: "#111827" }}>Saved Jobs ({saved.length})</h2>
-      {saved.length === 0 ? (
+      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 20, color: "#111827" }}>
+        Saved Jobs ({saved.length})
+      </h2>
+      {loading ? (
+        <div style={{ textAlign: "center", padding: "60px 20px", color: "#9ca3af" }}>Loading...</div>
+      ) : saved.length === 0 ? (
         <div style={{ textAlign: "center", padding: "60px 20px", color: "#9ca3af" }}>
           <div style={{ fontSize: 40, marginBottom: 10 }}>🔖</div>
-          <p>No saved jobs yet. Bookmark jobs you're interested in!</p>
+          <p>No saved jobs yet.</p>
+          <p style={{ fontSize: 12, marginTop: 8 }}>Bookmark jobs you're interested in!</p>
         </div>
       ) : saved.map((job, i) => (
-        <div key={i} style={{ background: "white", borderRadius: 12, padding: "16px 20px", marginBottom: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
-          <div style={{ fontWeight: 600, color: "#7c3aed", fontSize: 14 }}>{job.jobTitle}</div>
-          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>📍 {job.location || "Not specified"}</div>
-          <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 2 }}>🏢 {job.companyName || job.employerEmail}</div>
+        <div key={i} style={{ background: "white", borderRadius: 12, padding: "20px 24px", marginBottom: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontWeight: 600, color: "#7c3aed", fontSize: 15 }}>{job.jobTitle}</div>
+            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>📍 {job.location || "Not specified"}</div>
+            <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 2 }}>🏢 {job.companyName || job.employerEmail}</div>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexShrink: 0, marginLeft: 16 }}>
+            <button
+              onClick={() => onSelect && onSelect({ ...job, jobId: job._id.toString() })}
+              style={{ background: "#7c3aed", color: "white", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+            >View</button>
+            <button
+              onClick={() => unsave(job._id.toString())}
+              style={{ background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, cursor: "pointer" }}
+            >Remove</button>
+          </div>
         </div>
       ))}
     </div>
