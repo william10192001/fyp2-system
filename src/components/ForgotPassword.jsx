@@ -2,35 +2,33 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 function ForgotPassword() {
-  const navigate = useNavigate();
-  const [email, setEmail] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState("");
+  const navigate   = useNavigate();
+  const [email,     setEmail]     = useState("");
+  const [loading,   setLoading]   = useState(false);
+  const [sent,      setSent]      = useState(false);
+  const [error,     setError]     = useState("");
+  const [resetLink, setResetLink] = useState(""); // fallback if email fails
 
   const submit = async () => {
     if (!email.trim()) { setError("Please enter your email address"); return; }
     setError("");
     setLoading(true);
     try {
-      let res;
-      for (let i = 0; i < 3; i++) {
-        try {
-          res = await fetch("https://fyp2-backend-gihc.onrender.com/forgot-password", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: email.trim() })
-          });
-          break;
-        } catch (err) {
-          if (i === 2) throw err;
-          await new Promise(r => setTimeout(r, 2000));
-        }
-      }
-      if (!res) { setError("Server is waking up, please try again in 15 seconds"); setLoading(false); return; }
+      const res  = await fetch("https://fyp2-backend-gihc.onrender.com/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() })
+      });
       const data = await res.json();
-      if (!res.ok) { setError(data.msg || "Something went wrong"); setLoading(false); return; }
-      setSent(true);
+      if (!res.ok) {
+        setError(data.msg || "Something went wrong");
+      } else if (data.resetLink) {
+        // Email sending failed on server — show link directly (dev fallback)
+        setResetLink(data.resetLink);
+        setSent(true);
+      } else {
+        setSent(true);
+      }
     } catch (err) {
       setError("Cannot connect to server. Please try again.");
     }
@@ -38,142 +36,119 @@ function ForgotPassword() {
   };
 
   return (
-    <div style={{
-      minHeight: "100vh", display: "flex", fontFamily: "Inter, sans-serif",
-      background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 60%, #312e81 100%)"
-    }}>
-      <div style={{ margin: "auto", width: "100%", maxWidth: 420, padding: "0 20px" }}>
+    <div style={{ minHeight: "100vh", display: "flex", fontFamily: "Inter, sans-serif" }}>
 
-        {/* Logo */}
-        <div style={{ textAlign: "center", marginBottom: 40 }}>
-          <div style={{
-            width: 60, height: 60, background: "linear-gradient(135deg, #2563eb, #7c3aed)",
-            borderRadius: 16, display: "inline-flex", alignItems: "center", justifyContent: "center",
-            fontSize: 22, fontWeight: 800, color: "white", boxShadow: "0 8px 32px rgba(124,58,237,0.4)",
-            marginBottom: 16
-          }}>AI</div>
-          <div style={{ color: "white", fontWeight: 700, fontSize: 18 }}>AI Recruit</div>
+      {/* LEFT branding */}
+      <div style={{
+        flex: 1,
+        background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 60%, #312e81 100%)",
+        display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: "60px 40px"
+      }} className="hidden md:flex">
+        <div style={{ maxWidth: 380, textAlign: "center" }}>
+          <div style={{ width: 72, height: 72, background: "linear-gradient(135deg, #2563eb, #7c3aed)", borderRadius: 20, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 28px", fontSize: 28, fontWeight: 800, color: "white", boxShadow: "0 8px 32px rgba(124,58,237,0.4)" }}>AI</div>
+          <h1 style={{ color: "white", fontSize: 32, fontWeight: 800, margin: "0 0 16px" }}>Account Recovery</h1>
+          <p style={{ color: "#94a3b8", fontSize: 15, lineHeight: 1.7, margin: 0 }}>
+            Enter your registered email and we'll send you a secure link to reset your password.
+          </p>
+          <div style={{ marginTop: 40, display: "flex", flexDirection: "column", gap: 16, textAlign: "left" }}>
+            {[
+              { icon: "🔐", text: "Secure password reset via email link" },
+              { icon: "⏱️", text: "Reset link expires in 1 hour" },
+              { icon: "✅", text: "Your data stays safe and encrypted" },
+            ].map((item, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 36, height: 36, background: "rgba(255,255,255,0.1)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{item.icon}</div>
+                <span style={{ color: "#cbd5e1", fontSize: 14 }}>{item.text}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* RIGHT form */}
+      <div style={{ width: "100%", maxWidth: 480, background: "#0f172a", display: "flex", flexDirection: "column", justifyContent: "center", padding: "48px 40px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 40 }}>
+          <div style={{ width: 36, height: 36, background: "linear-gradient(135deg, #2563eb, #7c3aed)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: "white" }}>AI</div>
+          <span style={{ color: "white", fontWeight: 700, fontSize: 16 }}>AI Recruit</span>
         </div>
 
-        <div style={{
-          background: "rgba(255,255,255,0.05)", backdropFilter: "blur(20px)",
-          border: "1px solid rgba(255,255,255,0.1)", borderRadius: 20, padding: "40px 36px"
-        }}>
-          {!sent ? (
-            <>
-              <div style={{ textAlign: "center", marginBottom: 32 }}>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>🔐</div>
-                <h2 style={{ color: "white", fontSize: 24, fontWeight: 700, margin: "0 0 8px" }}>
-                  Forgot Password?
-                </h2>
-                <p style={{ color: "#94a3b8", fontSize: 14, margin: 0, lineHeight: 1.6 }}>
-                  No worries! Enter your email and we'll send you a reset link.
-                </p>
-              </div>
+        {!sent ? (
+          <>
+            <div style={{ marginBottom: 32 }}>
+              <h2 style={{ color: "white", fontSize: 28, fontWeight: 700, margin: "0 0 8px" }}>Forgot Password?</h2>
+              <p style={{ color: "#64748b", fontSize: 14, margin: 0 }}>We'll send a reset link to your email.</p>
+            </div>
 
-              <div style={{ marginBottom: 20 }}>
-                <label style={{ color: "#94a3b8", fontSize: 12, fontWeight: 500, display: "block", marginBottom: 8 }}>
-                  Email Address
-                </label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+              <div>
+                <label style={{ color: "#94a3b8", fontSize: 12, fontWeight: 500, display: "block", marginBottom: 8 }}>Email Address</label>
                 <input
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
+                  type="email" placeholder="you@example.com" value={email}
                   onChange={e => { setEmail(e.target.value); setError(""); }}
                   onKeyDown={e => e.key === "Enter" && submit()}
                   style={{
-                    width: "100%", background: "rgba(255,255,255,0.08)", border: error ? "1px solid #ef4444" : "1px solid rgba(255,255,255,0.15)",
-                    borderRadius: 12, padding: "13px 16px", color: "white", fontSize: 14, outline: "none", boxSizing: "border-box",
-                    transition: "border-color 0.2s"
+                    width: "100%", background: "#1e293b",
+                    border: error ? "1px solid #ef4444" : "1px solid #334155",
+                    borderRadius: 10, padding: "12px 16px", color: "white", fontSize: 14, outline: "none", boxSizing: "border-box"
                   }}
                   onFocus={e => e.target.style.borderColor = "#2563eb"}
-                  onBlur={e => e.target.style.borderColor = error ? "#ef4444" : "rgba(255,255,255,0.15)"}
+                  onBlur={e => e.target.style.borderColor = error ? "#ef4444" : "#334155"}
                 />
                 {error && (
-                  <div style={{ color: "#f87171", fontSize: 12, marginTop: 6, display: "flex", alignItems: "center", gap: 4 }}>
-                    ⚠️ {error}
-                  </div>
+                  <div style={{ color: "#f87171", fontSize: 12, marginTop: 6 }}>⚠️ {error}</div>
                 )}
               </div>
-
-              <button
-                onClick={submit}
-                disabled={loading}
-                style={{
-                  width: "100%", padding: "13px",
-                  background: loading ? "rgba(255,255,255,0.1)" : "linear-gradient(135deg, #2563eb, #7c3aed)",
-                  color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 600,
-                  cursor: loading ? "not-allowed" : "pointer", transition: "opacity 0.2s",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8
-                }}
-              >
+              <button onClick={submit} disabled={loading}
+                style={{ width: "100%", background: loading ? "#4b5563" : "linear-gradient(135deg, #2563eb, #7c3aed)", color: "white", border: "none", borderRadius: 10, padding: "13px", fontSize: 15, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                 {loading ? (
                   <>
-                    <span style={{
-                      width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)",
-                      borderTopColor: "white", borderRadius: "50%", display: "inline-block",
-                      animation: "spin 0.8s linear infinite"
-                    }}/>
+                    <span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />
                     Sending...
                   </>
                 ) : "Send Reset Link →"}
               </button>
-
-              <div style={{ textAlign: "center", marginTop: 24 }}>
-                <span
-                  onClick={() => navigate("/")}
-                  style={{ color: "#60a5fa", fontSize: 14, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}
-                >
-                  ← Back to Sign In
-                </span>
-              </div>
-            </>
-          ) : (
-            /* Success state */
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 60, marginBottom: 16 }}>📧</div>
-              <h2 style={{ color: "white", fontSize: 22, fontWeight: 700, margin: "0 0 12px" }}>
-                Check Your Email
-              </h2>
-              <p style={{ color: "#94a3b8", fontSize: 14, lineHeight: 1.7, margin: "0 0 8px" }}>
-                We sent a password reset link to:
-              </p>
-              <p style={{ color: "#60a5fa", fontWeight: 600, fontSize: 15, margin: "0 0 24px" }}>{email}</p>
-              <div style={{
-                background: "rgba(37,99,235,0.1)", border: "1px solid rgba(37,99,235,0.3)",
-                borderRadius: 12, padding: "16px", marginBottom: 28, fontSize: 13, color: "#94a3b8", lineHeight: 1.6
-              }}>
-                💡 Didn't receive it? Check your spam folder or{" "}
-                <span
-                  onClick={() => setSent(false)}
-                  style={{ color: "#60a5fa", cursor: "pointer", textDecoration: "underline" }}
-                >
-                  try again
-                </span>
-              </div>
-              <button
-                onClick={() => navigate("/")}
-                style={{
-                  width: "100%", padding: "13px",
-                  background: "linear-gradient(135deg, #2563eb, #7c3aed)",
-                  color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 600, cursor: "pointer"
-                }}
-              >
-                Back to Sign In
-              </button>
             </div>
-          )}
-        </div>
+          </>
+        ) : (
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 56, marginBottom: 20 }}>{resetLink ? "🔗" : "📧"}</div>
+            <h3 style={{ color: "white", fontSize: 22, fontWeight: 700, marginBottom: 12 }}>
+              {resetLink ? "Reset Link Ready" : "Email Sent!"}
+            </h3>
 
-        <p style={{ color: "#475569", fontSize: 12, textAlign: "center", marginTop: 24 }}>
-          © 2025 AI Recruit System · NLP-Based Secure Recruitment
-        </p>
+            {resetLink ? (
+              /* Fallback: email failed, show the link directly */
+              <div>
+                <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 16 }}>
+                  Email sending is currently unavailable. Click the button below to reset your password directly:
+                </p>
+                <a href={resetLink} style={{
+                  display: "block", background: "linear-gradient(135deg, #2563eb, #7c3aed)",
+                  color: "white", textDecoration: "none", padding: "13px", borderRadius: 10,
+                  fontSize: 15, fontWeight: 600, textAlign: "center", marginBottom: 16
+                }}>
+                  Reset My Password →
+                </a>
+                <p style={{ color: "#475569", fontSize: 11 }}>This link expires in 1 hour.</p>
+              </div>
+            ) : (
+              <p style={{ color: "#94a3b8", fontSize: 14, lineHeight: 1.7 }}>
+                We sent a reset link to<br />
+                <strong style={{ color: "white" }}>{email}</strong><br />
+                Check your inbox and spam folder.
+              </p>
+            )}
+          </div>
+        )}
+
+        <div style={{ marginTop: 32, textAlign: "center" }}>
+          <span onClick={() => navigate("/")} style={{ color: "#60a5fa", fontSize: 14, cursor: "pointer" }}>
+            ← Back to Login
+          </span>
+        </div>
       </div>
 
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        input::placeholder { color: #4b5563; }
-      `}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

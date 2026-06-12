@@ -20,17 +20,13 @@ function App() {
     JSON.parse(localStorage.getItem("user"))
   );
 
-  // LOGIN
   const login = async (email, password) => {
     try {
-      const res = await fetch(
-        "https://fyp2-backend-gihc.onrender.com/login",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password })
-        }
-      );
+      const res = await fetch("https://fyp2-backend-gihc.onrender.com/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
       const data = await res.json();
       if (data.token) {
         localStorage.setItem("user", JSON.stringify(data.user));
@@ -39,22 +35,17 @@ function App() {
         alert(data.msg);
       }
     } catch (err) {
-      console.log(err);
       alert("Login failed ❌");
     }
   };
 
-  // REGISTER ← 新增
   const register = async ({ email, password, role }, navigate) => {
     try {
-      const res = await fetch(
-        "https://fyp2-backend-gihc.onrender.com/register",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password, role })
-        }
-      );
+      const res = await fetch("https://fyp2-backend-gihc.onrender.com/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, role })
+      });
       const data = await res.json();
       if (res.ok) {
         alert("Registered ✅ Please login.");
@@ -67,7 +58,6 @@ function App() {
     }
   };
 
-  // LOGOUT
   const logout = () => {
     localStorage.removeItem("user");
     setUser(null);
@@ -76,8 +66,6 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-
-        {/* LOGIN */}
         <Route
           path="/"
           element={
@@ -91,46 +79,37 @@ function App() {
           }
         />
 
-        {/* REGISTER ← 修复：传入 onRegister 和 goLogin */}
         <Route
           path="/register"
-          element={
-            <RegisterWrapper onRegister={register} />
-          }
+          element={<RegisterWrapper onRegister={register} />}
         />
 
-        {/* FORGOT */}
         <Route path="/forgot" element={<ForgotPassword />} />
-
-        {/* RESET */}
         <Route path="/reset/:token" element={<ResetPassword />} />
 
-        {/* EMPLOYER */}
         <Route
           path="/employer"
           element={
             user?.role === "employer"
-              ? <EmployerDashboard user={user} logout={logout} />
+              ? <EmployerDashboard key={user.email} user={user} logout={logout} />
               : <Navigate to="/" />
           }
         />
 
-        {/* CANDIDATE */}
+        {/* ← key={user.email} forces full remount when user switches, fixing the "applied state shared" bug */}
         <Route
           path="/candidate"
           element={
             user?.role === "candidate"
-              ? <CandidateDashboard user={user} logout={logout} />
+              ? <CandidateDashboard key={user.email} user={user} logout={logout} />
               : <Navigate to="/" />
           }
         />
-
       </Routes>
     </BrowserRouter>
   );
 }
 
-// Wrapper 让 Register 拿到 navigate
 function RegisterWrapper({ onRegister }) {
   const navigate = useNavigate();
   return (
