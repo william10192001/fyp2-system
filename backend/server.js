@@ -27,12 +27,8 @@ mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 5000 })
   .then(() => console.log("MongoDB Connected ✅"))
   .catch(err => console.log("MongoDB Error:", err));
 
-/* ════════════════════════════════════════
-   EMAIL TRANSPORTER
-   重要：EMAIL_PASS 必须是 Gmail App Password（16位），不是普通密码
-   设置方法：Google Account → Security → 2-Step Verification → App Passwords
-════════════════════════════════════════ */
-const createTransporter = () => nodemailer.createTransport({
+/* ── Email Transporter ── */
+const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 587,
   secure: false,
@@ -42,20 +38,6 @@ const createTransporter = () => nodemailer.createTransport({
   },
   tls: { rejectUnauthorized: false }
 });
-
-// 每次发邮件都创建新的transporter，避免连接超时问题
-const sendEmail = async (mailOptions) => {
-  const transporter = createTransporter();
-  try {
-    await transporter.verify();
-    const info = await transporter.sendMail(mailOptions);
-    console.log("✅ Email sent:", info.messageId);
-    return { success: true };
-  } catch (err) {
-    console.log("❌ Email error:", err.message);
-    return { success: false, error: err.message };
-  }
-};
 
 /* ════════════════════════════════════════
    AUTH ROUTES
@@ -93,7 +75,7 @@ app.post("/login", async (req, res) => {
   }
 });
 
-/* ── Forgot Password ── */
+/* Forgot Password — returns link immediately, sends email in background */
 app.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
@@ -113,7 +95,7 @@ app.post("/forgot-password", async (req, res) => {
     // Return link immediately — never timeout waiting for email
     res.json({ msg: "Reset link ready", resetLink, success: true });
 
-    // Try send email in background (non-blocking — won't crash if it fails)
+    // Try send email in background (non-blocking)
     transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: email,
@@ -131,45 +113,6 @@ app.post("/forgot-password", async (req, res) => {
     res.status(500).json({ msg: "Server error" });
   }
 });
-
-/* ── Get Applications received by Employer ── */
-app.get("/employer-applications/:email", async (req, res) => {
-  try {
-    const apps = await Application.find({
-      employerEmail: req.params.email
-    }).sort({ createdAt: -1 });
-    res.json(apps);
-  } catch (err) {
-    console.log("EMPLOYER-APPS ERROR:", err);
-    res.status(500).json({ msg: "Fetch failed" });
-  }
-});
-
-/* ── Update Application Status (Employer accepts / rejects) ── */
-app.put("/application/:id/status", async (req, res) => {
-  try {
-    const { status } = req.body;
-    const app = await Application.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true }
-    );
-    res.json({ msg: "Status updated ✅", app });
-  } catch (err) {
-    res.status(500).json({ msg: "Update failed ❌" });
-  }
-});
-
-/* ── Cancel Application (Candidate withdraws) ── */
-app.delete("/cancel-application/:id", async (req, res) => {
-  try {
-    await Application.findByIdAndDelete(req.params.id);
-    res.json({ msg: "Application cancelled ✅" });
-  } catch (err) {
-    res.status(500).json({ msg: "Cancel failed ❌" });
-  }
-});
-
 
 /* Reset Password */
 app.post("/reset-password/:token", async (req, res) => {
@@ -314,7 +257,7 @@ app.post("/upload-job-pdf", upload.single("file"), async (req, res) => {
    AI MATCHING ROUTES
 ════════════════════════════════════════ */
 
-/* Employer: Run AI match */
+/* Employer: Run AI match — only show candidates with score >= 60% */
 app.post("/match", async (req, res) => {
   try {
     const { jobId } = req.body;
@@ -325,43 +268,77 @@ app.post("/match", async (req, res) => {
     let results = [];
 
     for (let candidate of candidates) {
-      if (!candidate.resumeText && !candidate.skills) continue;
-      const prompt = `You are an expert recruitment AI. Analyze this job-candidate match.
+      if (!candidate.resumeText && !candidate.skills && (!candidate.resumeKeywords || candidate.resumeKeywords.length === 0)) continue;
 
-JOB TITLE: ${job.jobTitle}
-JOB DESCRIPTION: ${job.jobDescription || "Not provided"}
+      // Keyword score (deterministic)
+      const resumeWords = candidate.resumeKeywords || [];
+      const jobKeywords = job.jobKeywords || [];
+      let matched = [];
+      for (let rw of resumeWords) {
+        for (let jw of jobKeywords) {
+          if (rw.toLowerCase().trim() === jw.toLowerCase().trim() && !matched.includes(rw)) matched.push(rw);
+        }
+      }
+      const keywordScore = jobKeywords.length > 0 ? Math.round((matched.length / jobKeywords.length) * 100) : 0;
+      let experienceScore = 0;
+      if (job.requiredExperience > 0) {
+        experienceScore = candidate.experienceYears >= job.requiredExperience
+          ? 100 : Math.round((candidate.experienceYears / job.requiredExperience) * 100);
+      }
+      const finalScore = Math.round(keywordScore * 0.8 + experienceScore * 0.2);
+
+      // ← Employer view: only show candidates with score >= 60%
+      if (finalScore < 60) continue;
+
+      const recommendation =
+        finalScore >= 70 ? "Perfect Match" :
+        finalScore >= 50 ? "Good Match" :
+        finalScore >= 30 ? "Partial Match" : "Weak Match";
+
+      // AI for skill names + summary only
+      const prompt = `
+You are a recruitment AI. List matched and missing skills.
+
+JOB KEYWORDS: ${jobKeywords.join(", ")}
 
 CANDIDATE:
-Name: ${candidate.name || "Unknown"}
 Skills: ${candidate.skills || "Not provided"}
 Experience: ${candidate.experience || "Not provided"}
-Education: ${candidate.education || "Not provided"}
-Resume: ${(candidate.resumeText || "").substring(0, 1000)}
+Resume: ${(candidate.resumeText || "").substring(0, 600)}
 
-Return ONLY JSON, no markdown:
-{"score":<0-100>,"matchedSkills":["skill1"],"missingSkills":["skill2"],"summary":"2 sentences","recommendation":"Perfect Match or Good Match or Partial Match or Weak Match"}`;
+Return ONLY JSON:
+{
+  "matchedSkills": ["skill1"],
+  "missingSkills": ["skill2"],
+  "summary": "<2 sentence analysis>"
+}
+`;
       try {
-        const aiRes  = await groq.chat.completions.create({
+        const aiRes = await groq.chat.completions.create({
           model: "llama-3.3-70b-versatile",
           messages: [{ role: "user", content: prompt }],
-          max_tokens: 500, temperature: 0.3
+          max_tokens: 350, temperature: 0.3
         });
         const raw     = aiRes.choices[0].message.content.trim();
-        const cleaned = raw.replace(/```json/g,"").replace(/```/g,"").trim();
+        const cleaned = raw.replace(/```json/g, "").replace(/```/g, "").trim();
         const parsed  = JSON.parse(cleaned);
-        if (parsed.score >= 20) {
-          results.push({
-            name: candidate.name, email: candidate.email, phone: candidate.phone,
-            education: candidate.education, skills: candidate.skills, experience: candidate.experience,
-            score: parsed.score, matchedKeywords: parsed.matchedSkills || [],
-            missingSkills: parsed.missingSkills || [], summary: parsed.summary || "",
-            recommendation: parsed.recommendation || "", resumeText: candidate.resumeText || ""
-          });
-        }
+        results.push({
+          name: candidate.name, email: candidate.email, phone: candidate.phone,
+          education: candidate.education, skills: candidate.skills, experience: candidate.experience,
+          score: finalScore, matchedKeywords: parsed.matchedSkills || matched.slice(0, 8),
+          missingSkills: parsed.missingSkills || [], summary: parsed.summary || "",
+          recommendation, resumeText: candidate.resumeText || ""
+        });
       } catch (aiErr) {
-        console.log("AI error for:", candidate.email, aiErr.message);
+        results.push({
+          name: candidate.name, email: candidate.email, phone: candidate.phone,
+          education: candidate.education, skills: candidate.skills, experience: candidate.experience,
+          score: finalScore, matchedKeywords: matched.slice(0, 8),
+          missingSkills: [], summary: "", recommendation, resumeText: candidate.resumeText || ""
+        });
       }
     }
+
     results.sort((a, b) => b.score - a.score);
     res.json(results);
   } catch (err) {
@@ -370,57 +347,43 @@ Return ONLY JSON, no markdown:
   }
 });
 
-/* 
-  ════════════════════════════════
-  FIX: match-jobs — 没有resume的账号应该返回score=0，不应该乱给分
-  ════════════════════════════════
-*/
+/* Candidate: See all jobs with keyword match score (no filter — show all) */
 app.post("/match-jobs", async (req, res) => {
   try {
     const { candidateEmail } = req.body;
     const candidate = await User.findOne({ email: candidateEmail });
     if (!candidate) return res.status(404).json({ msg: "Candidate not found" });
 
-    // 如果没有resume，直接返回空列表（不显示假分数）
-    const hasResume = candidate.resumeKeywords && candidate.resumeKeywords.length > 0;
-
     const jobs    = await Job.find({ status: "active" });
+    const resumeWords = candidate.resumeKeywords || [];
     const results = [];
 
     for (let job of jobs) {
-      let finalScore     = 0;
-      let matched        = [];
-      let recommendation = "Weak Match";
-
-      if (hasResume) {
-        const jobKeywords  = job.jobKeywords || [];
-        const resumeWords  = candidate.resumeKeywords || [];
-
-        for (let rw of resumeWords) {
-          for (let jw of jobKeywords) {
-            if (rw.toLowerCase().trim() === jw.toLowerCase().trim() && !matched.includes(rw)) {
-              matched.push(rw);
-            }
-          }
+      const jobKeywords = job.jobKeywords || [];
+      let matched = [];
+      for (let rw of resumeWords) {
+        for (let jw of jobKeywords) {
+          if (rw.toLowerCase().trim() === jw.toLowerCase().trim() && !matched.includes(rw)) matched.push(rw);
         }
-
-        const keywordScore   = jobKeywords.length > 0 ? Math.round((matched.length / jobKeywords.length) * 100) : 0;
-        let experienceScore  = 0;
-        if (job.requiredExperience > 0 && candidate.experienceYears > 0) {
-          experienceScore = candidate.experienceYears >= job.requiredExperience
-            ? 100 : Math.round((candidate.experienceYears / job.requiredExperience) * 100);
-        }
-        finalScore     = Math.round(keywordScore * 0.8 + experienceScore * 0.2);
-        recommendation = finalScore >= 70 ? "Perfect Match" : finalScore >= 50 ? "Good Match" : finalScore >= 30 ? "Partial Match" : "Weak Match";
       }
-
+      const keywordScore = jobKeywords.length > 0 ? Math.round((matched.length / jobKeywords.length) * 100) : 0;
+      let experienceScore = 0;
+      if (job.requiredExperience > 0) {
+        experienceScore = candidate.experienceYears >= job.requiredExperience
+          ? 100 : Math.round((candidate.experienceYears / job.requiredExperience) * 100);
+      }
+      const finalScore = Math.round(keywordScore * 0.8 + experienceScore * 0.2);
       const daysAgo = job.updatedAt ? Math.floor((Date.now() - new Date(job.updatedAt)) / 86400000) : 0;
+      const recommendation =
+        finalScore >= 70 ? "Perfect Match" :
+        finalScore >= 50 ? "Good Match" :
+        finalScore >= 30 ? "Partial Match" : "Weak Match";
+
       results.push({
         jobId: job._id.toString(), employerEmail: job.employerEmail,
         jobTitle: job.jobTitle || "Job Opening", companyName: job.companyName || job.employerEmail,
         location: job.location || "Not specified", jobDescription: job.jobDescription || "",
-        daysAgo, score: finalScore, matchedSkills: matched.slice(0, 15), recommendation,
-        hasResume
+        daysAgo, score: finalScore, matchedSkills: matched.slice(0, 15), recommendation
       });
     }
 
@@ -432,7 +395,7 @@ app.post("/match-jobs", async (req, res) => {
   }
 });
 
-/* Candidate: Deep AI analysis */
+/* Candidate: Deep AI analysis for a specific job */
 app.post("/analyze-job-match", async (req, res) => {
   try {
     const { candidateEmail, jobId } = req.body;
@@ -440,40 +403,77 @@ app.post("/analyze-job-match", async (req, res) => {
     const job       = await Job.findById(jobId);
     if (!candidate || !job) return res.status(404).json({ msg: "Not found" });
 
-    // 如果没有resume，直接返回0分
-    if (!candidate.resumeText && !candidate.skills) {
+    // No resume → return 0 immediately
+    if (!candidate.resumeText && !candidate.skills && (!candidate.resumeKeywords || candidate.resumeKeywords.length === 0)) {
       return res.json({
-        score: 0,
-        matchedSkills: [],
-        missingSkills: [],
+        score: 0, matchedSkills: [], missingSkills: (job.jobKeywords || []).slice(0, 6),
         summary: "No resume uploaded yet. Please upload your resume to get an accurate match score.",
         recommendation: "Weak Match"
       });
     }
 
-    const prompt = `You are an expert recruitment AI.
+    // Keyword score (consistent with employer view)
+    const resumeWords = candidate.resumeKeywords || [];
+    const jobKeywords = job.jobKeywords || [];
+    let matched = [];
+    for (let rw of resumeWords) {
+      for (let jw of jobKeywords) {
+        if (rw.toLowerCase().trim() === jw.toLowerCase().trim() && !matched.includes(rw)) matched.push(rw);
+      }
+    }
+    const keywordScore = jobKeywords.length > 0 ? Math.round((matched.length / jobKeywords.length) * 100) : 0;
+    let experienceScore = 0;
+    if (job.requiredExperience > 0) {
+      experienceScore = candidate.experienceYears >= job.requiredExperience
+        ? 100 : Math.round((candidate.experienceYears / job.requiredExperience) * 100);
+    }
+    const finalScore = Math.round(keywordScore * 0.8 + experienceScore * 0.2);
+    const recommendation =
+      finalScore >= 70 ? "Perfect Match" :
+      finalScore >= 50 ? "Good Match" :
+      finalScore >= 30 ? "Partial Match" : "Weak Match";
 
-JOB TITLE: ${job.jobTitle || "Job Opening"}
-JOB DESCRIPTION: ${job.jobDescription || "Not provided"}
+    // AI for skill names + summary only
+    const prompt = `
+You are a recruitment AI. Analyze skill match.
+
+JOB KEYWORDS: ${jobKeywords.join(", ")}
 
 CANDIDATE:
-Name: ${candidate.name || "Unknown"}
 Skills: ${candidate.skills || "Not provided"}
 Experience: ${candidate.experience || "Not provided"}
-Education: ${candidate.education || "Not provided"}
-Resume: ${(candidate.resumeText || "").substring(0, 1200)}
+Resume: ${(candidate.resumeText || "").substring(0, 600)}
 
-Return ONLY valid JSON, no markdown:
-{"score":<0-100>,"matchedSkills":["s1"],"missingSkills":["s2"],"summary":"2 sentences","recommendation":"Perfect Match or Good Match or Partial Match or Weak Match"}`;
-
-    const aiRes   = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 500, temperature: 0.3
-    });
-    const raw     = aiRes.choices[0].message.content.trim();
-    const cleaned = raw.replace(/```json/g,"").replace(/```/g,"").trim();
-    res.json(JSON.parse(cleaned));
+Return ONLY JSON:
+{
+  "matchedSkills": ["skill1"],
+  "missingSkills": ["skill2"],
+  "summary": "<1-2 sentence analysis>"
+}
+`;
+    try {
+      const aiRes = await groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 350, temperature: 0.3
+      });
+      const raw     = aiRes.choices[0].message.content.trim();
+      const cleaned = raw.replace(/```json/g, "").replace(/```/g, "").trim();
+      const parsed  = JSON.parse(cleaned);
+      res.json({
+        score: finalScore,
+        matchedSkills: parsed.matchedSkills || matched.slice(0, 8),
+        missingSkills: parsed.missingSkills || [],
+        summary:       parsed.summary || "",
+        recommendation
+      });
+    } catch (aiErr) {
+      res.json({
+        score: finalScore, matchedSkills: matched.slice(0, 8),
+        missingSkills: jobKeywords.filter(k => !matched.includes(k)).slice(0, 6),
+        summary: "", recommendation
+      });
+    }
   } catch (err) {
     console.log("ANALYZE ERROR:", err.message);
     res.status(500).json({ msg: "Analysis failed" });
@@ -484,6 +484,7 @@ Return ONLY valid JSON, no markdown:
    APPLICATION ROUTES
 ════════════════════════════════════════ */
 
+/* Apply to job — allow re-apply if previously rejected */
 app.post("/apply", async (req, res) => {
   try {
     const { jobId, candidateEmail } = req.body;
@@ -492,9 +493,15 @@ app.post("/apply", async (req, res) => {
     const candidate = await User.findOne({ email: candidateEmail });
     if (!candidate) return res.status(404).json({ msg: "Candidate not found" });
 
-    // 检查这个具体账号是否已申请（按candidateEmail精确匹配）
     const existing = await Application.findOne({ jobId, candidateEmail });
-    if (existing) return res.status(400).json({ msg: "You have already applied to this job" });
+    if (existing) {
+      if (existing.status === "rejected") {
+        // Allow re-apply: delete old rejected application
+        await Application.findByIdAndDelete(existing._id);
+      } else {
+        return res.status(400).json({ msg: "You have already applied to this job" });
+      }
+    }
 
     const application = new Application({
       jobId, jobTitle: job.jobTitle, candidateEmail,
@@ -503,48 +510,23 @@ app.post("/apply", async (req, res) => {
     });
     await application.save();
 
-    // 发邮件通知employer
-    const emailResult = await sendEmail({
-      from: `"AI Recruit System" <${process.env.EMAIL_USER}>`,
+    // Notify employer (non-blocking)
+    transporter.sendMail({
+      from: process.env.EMAIL_USER,
       to: job.employerEmail,
-      subject: `🎯 New Application for "${job.jobTitle}"`,
-      html: `
-        <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#f8fafc;padding:32px 20px;">
-          <div style="background:linear-gradient(135deg,#7c3aed,#2563eb);border-radius:16px;padding:24px;text-align:center;margin-bottom:20px;">
-            <div style="font-size:32px;margin-bottom:8px;">🎯</div>
-            <h1 style="color:white;font-size:20px;margin:0;">New Application Received!</h1>
-          </div>
-          <div style="background:white;border-radius:16px;padding:28px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
-            <p style="color:#374151;font-size:15px;line-height:1.7;margin-top:0;">
-              A candidate has applied for <strong>${job.jobTitle}</strong> on AI Recruit System.
-            </p>
-            <div style="background:#f9fafb;border-radius:12px;padding:20px;margin:20px 0;">
-              <table style="width:100%;border-collapse:collapse;">
-                <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;width:120px;">📋 Position</td><td style="padding:8px 0;color:#111827;font-weight:600;font-size:13px;">${job.jobTitle}</td></tr>
-                <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">👤 Applicant</td><td style="padding:8px 0;color:#111827;font-weight:600;font-size:13px;">${candidate.name || "Not provided"}</td></tr>
-                <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">📧 Email</td><td style="padding:8px 0;color:#2563eb;font-size:13px;">${candidateEmail}</td></tr>
-                <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">💼 Experience</td><td style="padding:8px 0;color:#111827;font-size:13px;">${candidate.experience || "Not provided"}</td></tr>
-                <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">🎓 Education</td><td style="padding:8px 0;color:#111827;font-size:13px;">${candidate.education || "Not provided"}</td></tr>
-                <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">💡 Skills</td><td style="padding:8px 0;color:#111827;font-size:13px;">${candidate.skills || "Not provided"}</td></tr>
-                <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">📅 Applied</td><td style="padding:8px 0;color:#111827;font-size:13px;">${new Date().toLocaleString("en-MY")}</td></tr>
-              </table>
-            </div>
-            <p style="color:#6b7280;font-size:13px;">
-              Log into your <strong>Employer Dashboard</strong> → <strong>Run AI Match</strong> to see full AI analysis.
-            </p>
-          </div>
-          <p style="color:#9ca3af;font-size:12px;text-align:center;margin-top:16px;">
-            © 2025 AI Recruit System · NLP-Based Secure Recruitment
-          </p>
-        </div>
-      `
-    });
-
-    if (emailResult.success) {
-      console.log(`✅ Employer notified: ${job.employerEmail}`);
-    } else {
-      console.log(`⚠️  Employer email failed: ${emailResult.error}`);
-    }
+      subject: `New Application: ${job.jobTitle} - AI Recruit`,
+      html: `<div style="font-family:Inter,sans-serif;padding:32px;max-width:500px">
+        <h2>New Application Received</h2>
+        <p><strong>${candidate.name || candidateEmail}</strong> applied for <strong>${job.jobTitle}</strong>.</p>
+        <table style="width:100%">
+          <tr><td style="color:#64748b">Name:</td><td><strong>${candidate.name || "N/A"}</strong></td></tr>
+          <tr><td style="color:#64748b">Email:</td><td>${candidateEmail}</td></tr>
+          <tr><td style="color:#64748b">Position:</td><td><strong>${job.jobTitle}</strong></td></tr>
+        </table>
+        <p style="color:#94a3b8;font-size:12px;margin-top:16px">Login to your employer dashboard to view applications.</p>
+      </div>`
+    }).then(() => console.log("Employer notified:", job.employerEmail))
+      .catch(err => console.log("Notification email failed:", err.message));
 
     res.json({ msg: "Applied successfully ✅", jobTitle: job.jobTitle });
   } catch (err) {
@@ -571,6 +553,16 @@ app.get("/my-applications/:email", async (req, res) => {
   }
 });
 
+app.get("/employer-applications/:email", async (req, res) => {
+  try {
+    const apps = await Application.find({ employerEmail: req.params.email }).sort({ createdAt: -1 });
+    res.json(apps);
+  } catch (err) {
+    console.log("EMPLOYER-APPS ERROR:", err);
+    res.status(500).json({ msg: "Fetch failed" });
+  }
+});
+
 app.put("/application/:id/status", async (req, res) => {
   try {
     const { status } = req.body;
@@ -578,6 +570,15 @@ app.put("/application/:id/status", async (req, res) => {
     res.json({ msg: "Status updated ✅", app });
   } catch (err) {
     res.status(500).json({ msg: "Update failed ❌" });
+  }
+});
+
+app.delete("/cancel-application/:id", async (req, res) => {
+  try {
+    await Application.findByIdAndDelete(req.params.id);
+    res.json({ msg: "Application cancelled ✅" });
+  } catch (err) {
+    res.status(500).json({ msg: "Cancel failed ❌" });
   }
 });
 

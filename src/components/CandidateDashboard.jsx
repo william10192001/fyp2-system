@@ -21,7 +21,8 @@ function CandidateDashboard({ user, logout }) {
   const [myData,       setMyData]       = useState(null);
   const [activeDetail, setActiveDetail] = useState("description");
   const [savedJobs,    setSavedJobs]    = useState([]);
-  const [appliedJobs,  setAppliedJobs]  = useState([]);
+  const [appliedJobs,  setAppliedJobs]  = useState([]);   // pending / accepted
+  const [rejectedJobs, setRejectedJobs] = useState([]);   // rejected → can re-apply
   const [applyingId,   setApplyingId]   = useState(null);
   const [filterLevel,  setFilterLevel]  = useState("All");
   const [sortOrder,    setSortOrder]    = useState("score");
@@ -41,8 +42,11 @@ function CandidateDashboard({ user, logout }) {
       ]);
       const appData   = await appRes.json();
       const savedData = await savedRes.json();
-      setAppliedJobs(Array.isArray(appData)   ? appData.map(a => a.jobId)            : []);
-      setSavedJobs(Array.isArray(savedData)   ? savedData.map(j => j._id.toString()) : []);
+      const apps = Array.isArray(appData) ? appData : [];
+      // Split: pending/accepted = can't re-apply | rejected = can re-apply
+      setAppliedJobs(apps.filter(a => a.status !== "rejected").map(a => a.jobId));
+      setRejectedJobs(apps.filter(a => a.status === "rejected").map(a => a.jobId));
+      setSavedJobs(Array.isArray(savedData) ? savedData.map(j => j._id.toString()) : []);
     } catch (err) { console.log(err); }
   };
 
@@ -90,10 +94,17 @@ function CandidateDashboard({ user, logout }) {
       const data = await res.json();
       if (res.ok) {
         setAppliedJobs(prev => [...prev, job.jobId]);
+        setRejectedJobs(prev => prev.filter(id => id !== job.jobId));
+        setApplyingId(null);   // ← Fix: clear BEFORE alert so button updates immediately
         alert(`Successfully applied to "${job.jobTitle}" ✅`);
-      } else { alert(data.msg); }
-    } catch (err) { alert("Apply failed ❌"); }
-    setApplyingId(null);
+      } else {
+        setApplyingId(null);
+        alert(data.msg);
+      }
+    } catch (err) {
+      setApplyingId(null);
+      alert("Apply failed ❌");
+    }
   };
 
   const toggleSaveJob = async (jobId) => {
@@ -120,6 +131,13 @@ function CandidateDashboard({ user, logout }) {
 
   const candidateName = myData?.name || user.email.split("@")[0];
   const hasResume     = !!myData?.resumeText;
+
+  // Determine apply button appearance for a job
+  const getApplyState = (jobId) => {
+    if (appliedJobs.includes(jobId)) return "applied";
+    if (rejectedJobs.includes(jobId)) return "rejected";
+    return "none";
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: "#f3f4f6", fontFamily: "Inter, sans-serif" }}>
@@ -231,8 +249,9 @@ function CandidateDashboard({ user, logout }) {
                 </div>
               )}
               {!loadingJobs && displayedJobs.map((job, i) => {
-                const ms  = MS[job.recommendation] || MS["Weak Match"];
-                const sel = selectedJob?.jobId === job.jobId;
+                const ms    = MS[job.recommendation] || MS["Weak Match"];
+                const sel   = selectedJob?.jobId === job.jobId;
+                const state = getApplyState(job.jobId);
                 return (
                   <div key={i} onClick={() => selectJob(job)} style={{
                     padding: "16px 20px", borderBottom: "1px solid #f3f4f6", cursor: "pointer",
@@ -241,8 +260,11 @@ function CandidateDashboard({ user, logout }) {
                   }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: sel ? "#1d4ed8" : "#7c3aed", marginBottom: 4 }}>
                       {job.jobTitle}
-                      {appliedJobs.includes(job.jobId) && (
+                      {state === "applied" && (
                         <span style={{ marginLeft: 6, fontSize: 10, background: "#dcfce7", color: "#16a34a", padding: "2px 6px", borderRadius: 99, fontWeight: 600 }}>Applied</span>
+                      )}
+                      {state === "rejected" && (
+                        <span style={{ marginLeft: 6, fontSize: 10, background: "#fee2e2", color: "#dc2626", padding: "2px 6px", borderRadius: 99, fontWeight: 600 }}>Rejected</span>
                       )}
                     </div>
                     <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 2 }}>📍 {job.location}</div>
@@ -269,18 +291,42 @@ function CandidateDashboard({ user, logout }) {
                   <h1 style={{ fontSize: 22, fontWeight: 700, color: "#111827", marginBottom: 4 }}>{selectedJob.jobTitle}</h1>
                   <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 4 }}>📍 {selectedJob.location}</div>
                   <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 20 }}>🏢 {selectedJob.companyName || selectedJob.employerEmail}</div>
+
+                  {/* Rejection notice */}
+                  {getApplyState(selectedJob.jobId) === "rejected" && (
+                    <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#dc2626" }}>
+                      ✗ Your previous application was rejected. You may re-apply below.
+                    </div>
+                  )}
+
                   <div style={{ display: "flex", gap: 12 }}>
-                    <button onClick={() => applyToJob(selectedJob)} disabled={appliedJobs.includes(selectedJob.jobId) || applyingId === selectedJob.jobId}
-                      style={{
-                        padding: "10px 24px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                        cursor: appliedJobs.includes(selectedJob.jobId) ? "default" : "pointer",
-                        border: appliedJobs.includes(selectedJob.jobId) ? "2px solid #16a34a" : "2px solid #7c3aed",
-                        color: appliedJobs.includes(selectedJob.jobId) ? "#16a34a" : "white",
-                        background: appliedJobs.includes(selectedJob.jobId) ? "#f0fdf4" : "#7c3aed",
-                        opacity: applyingId === selectedJob.jobId ? 0.7 : 1
-                      }}>
-                      {applyingId === selectedJob.jobId ? "Applying..." : appliedJobs.includes(selectedJob.jobId) ? "✓ Applied" : "Apply Now"}
-                    </button>
+                    {/* Apply / Re-Apply / Applied button */}
+                    {(() => {
+                      const state = getApplyState(selectedJob.jobId);
+                      const isApplying = applyingId === selectedJob.jobId;
+                      const btnConfig = {
+                        applied:  { label: "✓ Applied",   bg: "#f0fdf4", border: "#16a34a", color: "#16a34a", disabled: true  },
+                        rejected: { label: "Re-Apply",    bg: "#ef4444", border: "#ef4444", color: "white",   disabled: false },
+                        none:     { label: "Apply Now",   bg: "#7c3aed", border: "#7c3aed", color: "white",   disabled: false },
+                      };
+                      const cfg = btnConfig[state];
+                      return (
+                        <button
+                          onClick={() => applyToJob(selectedJob)}
+                          disabled={cfg.disabled || isApplying}
+                          style={{
+                            padding: "10px 24px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                            cursor: cfg.disabled ? "default" : "pointer",
+                            border: `2px solid ${cfg.border}`,
+                            color: isApplying ? "white" : cfg.color,
+                            background: isApplying ? "#9ca3af" : cfg.bg,
+                            opacity: isApplying ? 0.8 : 1
+                          }}>
+                          {isApplying ? "Applying..." : cfg.label}
+                        </button>
+                      );
+                    })()}
+
                     <button onClick={() => toggleSaveJob(selectedJob.jobId)} style={{
                       padding: "10px 24px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
                       border: savedJobs.includes(selectedJob.jobId) ? "2px solid #2563eb" : "2px solid #d1d5db",
@@ -404,10 +450,7 @@ function AppliedTab({ email, onAppliedChange }) {
     if (!window.confirm("Cancel this application?")) return;
     try {
       const res = await fetch(`${BASE}/cancel-application/${appId}`, { method: "DELETE" });
-      if (res.ok) {
-        fetchApps();
-        if (onAppliedChange) onAppliedChange();
-      }
+      if (res.ok) { fetchApps(); if (onAppliedChange) onAppliedChange(); }
     } catch (err) { alert("Failed to cancel ❌"); }
   };
 
@@ -440,6 +483,11 @@ function AppliedTab({ email, onAppliedChange }) {
               <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
                 📅 Applied: {new Date(a.createdAt).toLocaleDateString("en-MY", { year: "numeric", month: "long", day: "numeric" })}
               </div>
+              {a.status === "rejected" && (
+                <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>
+                  💡 You can re-apply from the Job Matches tab
+                </div>
+              )}
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0, marginLeft: 16 }}>
               <span style={{ background: s.bg, color: s.color, fontSize: 12, fontWeight: 600, padding: "5px 14px", borderRadius: 99 }}>
