@@ -93,7 +93,7 @@ app.post("/login", async (req, res) => {
   }
 });
 
-/* Forgot Password */
+/* ── Forgot Password ── */
 app.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
@@ -103,58 +103,73 @@ app.post("/forgot-password", async (req, res) => {
     if (!user) return res.status(404).json({ msg: "No account found with this email" });
 
     const token = crypto.randomBytes(32).toString("hex");
-    user.resetToken       = token;
-    user.resetTokenExpiry = Date.now() + 1000 * 60 * 30; // 30 min
+    user.resetToken = token;
+    user.resetTokenExpiry = Date.now() + 1000 * 60 * 60; // 1 hour
     await user.save();
 
-    const link = `${process.env.FRONTEND_URL}/reset/${token}`;
-    console.log("🔗 Reset link:", link);  // debug log
+    const frontendUrl = process.env.FRONTEND_URL || "https://fyp2-frontend.onrender.com";
+    const resetLink = `${frontendUrl}/reset/${token}`;
 
-    const result = await sendEmail({
-      from: `"AI Recruit System" <${process.env.EMAIL_USER}>`,
-      to: user.email,
-      subject: "🔐 Reset Your AI Recruit Password",
-      html: `
-        <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px 20px;background:#f8fafc;">
-          <div style="background:linear-gradient(135deg,#2563eb,#7c3aed);border-radius:16px;padding:28px;text-align:center;margin-bottom:20px;">
-            <div style="font-size:32px;margin-bottom:8px;">🔐</div>
-            <h1 style="color:white;font-size:20px;margin:0;">Reset Your Password</h1>
-          </div>
-          <div style="background:white;border-radius:16px;padding:28px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
-            <p style="color:#374151;font-size:15px;line-height:1.7;">
-              We received a request to reset your AI Recruit password. Click below to set a new one.
-            </p>
-            <div style="text-align:center;margin:24px 0;">
-              <a href="${link}" style="background:linear-gradient(135deg,#2563eb,#7c3aed);color:white;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:600;font-size:15px;display:inline-block;">
-                Reset Password →
-              </a>
-            </div>
-            <p style="color:#6b7280;font-size:13px;">This link expires in <strong>30 minutes</strong>.</p>
-            <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;">
-            <p style="color:#9ca3af;font-size:12px;word-break:break-all;">
-              Or copy: <a href="${link}" style="color:#2563eb;">${link}</a>
-            </p>
-          </div>
-          <p style="color:#9ca3af;font-size:12px;text-align:center;margin-top:16px;">
-            © 2025 AI Recruit System · NLP-Based Secure Recruitment
-          </p>
-        </div>
-      `
-    });
+    // Return link immediately — never timeout waiting for email
+    res.json({ msg: "Reset link ready", resetLink, success: true });
 
-    if (!result.success) {
-      console.log("Email failed:", result.error);
-      return res.status(500).json({ 
-        msg: `Email failed to send. Error: ${result.error}. Please check Gmail App Password settings.` 
-      });
-    }
+    // Try send email in background (non-blocking — won't crash if it fails)
+    transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "Reset Your Password - AI Recruit",
+      html: `<div style="font-family:Inter,sans-serif;padding:32px;max-width:500px">
+        <h2 style="color:#1e293b">Reset Your Password</h2>
+        <p style="color:#64748b">Click below to reset your password. Expires in 1 hour.</p>
+        <a href="${resetLink}" style="display:inline-block;background:linear-gradient(135deg,#2563eb,#7c3aed);color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600">Reset Password</a>
+      </div>`
+    }).then(() => console.log("Email sent:", email))
+      .catch(err => console.log("Background email failed:", err.message));
 
-    res.json({ msg: "Reset link sent! Check your inbox (and spam folder)." });
   } catch (err) {
-    console.log("Forgot password error:", err);
-    res.status(500).json({ msg: "Server error: " + err.message });
+    console.log(err);
+    res.status(500).json({ msg: "Server error" });
   }
 });
+
+/* ── Get Applications received by Employer ── */
+app.get("/employer-applications/:email", async (req, res) => {
+  try {
+    const apps = await Application.find({
+      employerEmail: req.params.email
+    }).sort({ createdAt: -1 });
+    res.json(apps);
+  } catch (err) {
+    console.log("EMPLOYER-APPS ERROR:", err);
+    res.status(500).json({ msg: "Fetch failed" });
+  }
+});
+
+/* ── Update Application Status (Employer accepts / rejects) ── */
+app.put("/application/:id/status", async (req, res) => {
+  try {
+    const { status } = req.body;
+    const app = await Application.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true }
+    );
+    res.json({ msg: "Status updated ✅", app });
+  } catch (err) {
+    res.status(500).json({ msg: "Update failed ❌" });
+  }
+});
+
+/* ── Cancel Application (Candidate withdraws) ── */
+app.delete("/cancel-application/:id", async (req, res) => {
+  try {
+    await Application.findByIdAndDelete(req.params.id);
+    res.json({ msg: "Application cancelled ✅" });
+  } catch (err) {
+    res.status(500).json({ msg: "Cancel failed ❌" });
+  }
+});
+
 
 /* Reset Password */
 app.post("/reset-password/:token", async (req, res) => {

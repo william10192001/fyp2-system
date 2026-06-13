@@ -7,7 +7,7 @@ function ForgotPassword() {
   const [loading,   setLoading]   = useState(false);
   const [sent,      setSent]      = useState(false);
   const [error,     setError]     = useState("");
-  const [resetLink, setResetLink] = useState(""); // fallback if email fails
+  const [resetLink, setResetLink] = useState("");
 
   const submit = async () => {
     if (!email.trim()) { setError("Please enter your email address"); return; }
@@ -22,11 +22,8 @@ function ForgotPassword() {
       const data = await res.json();
       if (!res.ok) {
         setError(data.msg || "Something went wrong");
-      } else if (data.resetLink) {
-        // Email sending failed on server — show link directly (dev fallback)
-        setResetLink(data.resetLink);
-        setSent(true);
       } else {
+        setResetLink(data.resetLink || "");
         setSent(true);
       }
     } catch (err) {
@@ -48,11 +45,11 @@ function ForgotPassword() {
           <div style={{ width: 72, height: 72, background: "linear-gradient(135deg, #2563eb, #7c3aed)", borderRadius: 20, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 28px", fontSize: 28, fontWeight: 800, color: "white", boxShadow: "0 8px 32px rgba(124,58,237,0.4)" }}>AI</div>
           <h1 style={{ color: "white", fontSize: 32, fontWeight: 800, margin: "0 0 16px" }}>Account Recovery</h1>
           <p style={{ color: "#94a3b8", fontSize: 15, lineHeight: 1.7, margin: 0 }}>
-            Enter your registered email and we'll send you a secure link to reset your password.
+            Enter your registered email and we'll generate a secure link to reset your password.
           </p>
           <div style={{ marginTop: 40, display: "flex", flexDirection: "column", gap: 16, textAlign: "left" }}>
             {[
-              { icon: "🔐", text: "Secure password reset via email link" },
+              { icon: "🔐", text: "Secure password reset link" },
               { icon: "⏱️", text: "Reset link expires in 1 hour" },
               { icon: "✅", text: "Your data stays safe and encrypted" },
             ].map((item, i) => (
@@ -76,7 +73,7 @@ function ForgotPassword() {
           <>
             <div style={{ marginBottom: 32 }}>
               <h2 style={{ color: "white", fontSize: 28, fontWeight: 700, margin: "0 0 8px" }}>Forgot Password?</h2>
-              <p style={{ color: "#64748b", fontSize: 14, margin: 0 }}>We'll send a reset link to your email.</p>
+              <p style={{ color: "#64748b", fontSize: 14, margin: 0 }}>Enter your email to get a reset link.</p>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -89,55 +86,52 @@ function ForgotPassword() {
                   style={{
                     width: "100%", background: "#1e293b",
                     border: error ? "1px solid #ef4444" : "1px solid #334155",
-                    borderRadius: 10, padding: "12px 16px", color: "white", fontSize: 14, outline: "none", boxSizing: "border-box"
+                    borderRadius: 10, padding: "12px 16px", color: "white", fontSize: 14,
+                    outline: "none", boxSizing: "border-box"
                   }}
                   onFocus={e => e.target.style.borderColor = "#2563eb"}
                   onBlur={e => e.target.style.borderColor = error ? "#ef4444" : "#334155"}
                 />
-                {error && (
-                  <div style={{ color: "#f87171", fontSize: 12, marginTop: 6 }}>⚠️ {error}</div>
-                )}
+                {error && <div style={{ color: "#f87171", fontSize: 12, marginTop: 6 }}>⚠️ {error}</div>}
               </div>
-              <button onClick={submit} disabled={loading}
-                style={{ width: "100%", background: loading ? "#4b5563" : "linear-gradient(135deg, #2563eb, #7c3aed)", color: "white", border: "none", borderRadius: 10, padding: "13px", fontSize: 15, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+
+              <button onClick={submit} disabled={loading} style={{
+                width: "100%",
+                background: loading ? "#4b5563" : "linear-gradient(135deg, #2563eb, #7c3aed)",
+                color: "white", border: "none", borderRadius: 10, padding: "13px",
+                fontSize: 15, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8
+              }}>
                 {loading ? (
                   <>
                     <span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />
-                    Sending...
+                    Generating link...
                   </>
-                ) : "Send Reset Link →"}
+                ) : "Get Reset Link →"}
               </button>
             </div>
           </>
         ) : (
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 56, marginBottom: 20 }}>{resetLink ? "🔗" : "📧"}</div>
-            <h3 style={{ color: "white", fontSize: 22, fontWeight: 700, marginBottom: 12 }}>
-              {resetLink ? "Reset Link Ready" : "Email Sent!"}
-            </h3>
-
-            {resetLink ? (
-              /* Fallback: email failed, show the link directly */
-              <div>
-                <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 16 }}>
-                  Email sending is currently unavailable. Click the button below to reset your password directly:
-                </p>
-                <a href={resetLink} style={{
-                  display: "block", background: "linear-gradient(135deg, #2563eb, #7c3aed)",
-                  color: "white", textDecoration: "none", padding: "13px", borderRadius: 10,
-                  fontSize: 15, fontWeight: 600, textAlign: "center", marginBottom: 16
-                }}>
-                  Reset My Password →
-                </a>
-                <p style={{ color: "#475569", fontSize: 11 }}>This link expires in 1 hour.</p>
-              </div>
-            ) : (
-              <p style={{ color: "#94a3b8", fontSize: 14, lineHeight: 1.7 }}>
-                We sent a reset link to<br />
-                <strong style={{ color: "white" }}>{email}</strong><br />
-                Check your inbox and spam folder.
-              </p>
+            <div style={{ fontSize: 56, marginBottom: 20 }}>🔗</div>
+            <h3 style={{ color: "white", fontSize: 22, fontWeight: 700, marginBottom: 12 }}>Reset Link Ready!</h3>
+            <p style={{ color: "#94a3b8", fontSize: 14, marginBottom: 24 }}>
+              Click the button below to reset your password for<br />
+              <strong style={{ color: "white" }}>{email}</strong>
+            </p>
+            {resetLink && (
+              <a href={resetLink} style={{
+                display: "block",
+                background: "linear-gradient(135deg, #2563eb, #7c3aed)",
+                color: "white", textDecoration: "none",
+                padding: "13px", borderRadius: 10,
+                fontSize: 15, fontWeight: 600,
+                marginBottom: 16
+              }}>
+                Reset My Password →
+              </a>
             )}
+            <p style={{ color: "#475569", fontSize: 11 }}>This link expires in 1 hour.</p>
           </div>
         )}
 
