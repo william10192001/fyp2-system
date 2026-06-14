@@ -629,6 +629,63 @@ app.get("/saved-jobs/:email", async (req, res) => {
   }
 });
 
+
+/* ════════════════════════════════════════
+   ADMIN ROUTES
+════════════════════════════════════════ */
+
+/* Get all users (candidates + employers) for admin */
+app.get("/admin/all-users", async (req, res) => {
+  try {
+    const users = await User.find({}, { password: 0, resetToken: 0, resetTokenExpiry: 0 });
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ msg: "Fetch failed" });
+  }
+});
+
+/* Get all jobs for admin */
+app.get("/admin/all-jobs", async (req, res) => {
+  try {
+    const jobs = await Job.find({}).sort({ createdAt: -1 });
+    res.json(jobs);
+  } catch (err) {
+    res.status(500).json({ msg: "Fetch failed" });
+  }
+});
+
+/* Get all applications for admin */
+app.get("/admin/all-applications", async (req, res) => {
+  try {
+    const apps = await Application.find({}).sort({ createdAt: -1 });
+    res.json(apps);
+  } catch (err) {
+    res.status(500).json({ msg: "Fetch failed" });
+  }
+});
+
+/* Admin delete any user */
+app.delete("/admin/delete-user", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ msg: "Email required" });
+    await User.findOneAndDelete({ email });
+    res.json({ msg: `User ${email} deleted ✅` });
+  } catch (err) {
+    res.status(500).json({ msg: "Delete failed" });
+  }
+});
+
+/* Admin delete any application */
+app.delete("/admin/delete-application/:id", async (req, res) => {
+  try {
+    await Application.findByIdAndDelete(req.params.id);
+    res.json({ msg: "Application deleted ✅" });
+  } catch (err) {
+    res.status(500).json({ msg: "Delete failed" });
+  }
+});
+
 app.get("/", (req, res) => res.send("Backend running ✅"));
 
 const PORT = process.env.PORT || 5000;

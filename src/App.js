@@ -7,15 +7,17 @@ import {
   useNavigate
 } from "react-router-dom";
 
-import Login from "./components/Login";
-import Register from "./components/Register";
-import ForgotPassword from "./components/ForgotPassword";
-import ResetPassword from "./components/ResetPassword";
+import Login            from "./components/Login";
+import Register         from "./components/Register";
+import ForgotPassword   from "./components/ForgotPassword";
+import ResetPassword    from "./components/ResetPassword";
 import CandidateDashboard from "./components/CandidateDashboard";
-import EmployerDashboard from "./components/EmployerDashboard";
+import EmployerDashboard  from "./components/EmployerDashboard";
+import AdminDashboard     from "./components/AdminDashboard";
+
+const ADMIN_EMAILS = ["admin@airecruit.com", "liewyongzheng@graduate.utm.my"];
 
 function App() {
-
   const [user, setUser] = useState(
     JSON.parse(localStorage.getItem("user"))
   );
@@ -29,8 +31,9 @@ function App() {
       });
       const data = await res.json();
       if (data.token) {
-        localStorage.setItem("user", JSON.stringify(data.user));
-        setUser(data.user);
+        const userObj = { ...data.user, isAdmin: ADMIN_EMAILS.includes(data.user.email) };
+        localStorage.setItem("user", JSON.stringify(userObj));
+        setUser(userObj);
       } else {
         alert(data.msg);
       }
@@ -63,19 +66,20 @@ function App() {
     setUser(null);
   };
 
+  const getRedirect = () => {
+    if (!user) return <Navigate to="/" />;
+    if (user.isAdmin)            return <Navigate to="/admin" />;
+    if (user.role === "employer") return <Navigate to="/employer" />;
+    return <Navigate to="/candidate" />;
+  };
+
   return (
     <BrowserRouter>
       <Routes>
         <Route
           path="/"
           element={
-            user ? (
-              user.role === "employer"
-                ? <Navigate to="/employer" />
-                : <Navigate to="/candidate" />
-            ) : (
-              <Login onLogin={login} />
-            )
+            user ? getRedirect() : <Login onLogin={login} />
           }
         />
 
@@ -88,6 +92,15 @@ function App() {
         <Route path="/reset/:token" element={<ResetPassword />} />
 
         <Route
+          path="/admin"
+          element={
+            user?.isAdmin
+              ? <AdminDashboard user={user} logout={logout} />
+              : <Navigate to="/" />
+          }
+        />
+
+        <Route
           path="/employer"
           element={
             user?.role === "employer"
@@ -96,7 +109,6 @@ function App() {
           }
         />
 
-        {/* ← key={user.email} forces full remount when user switches, fixing the "applied state shared" bug */}
         <Route
           path="/candidate"
           element={
