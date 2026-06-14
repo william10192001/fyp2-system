@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 function Login({ onLogin }) {
@@ -6,6 +6,7 @@ function Login({ onLogin }) {
   const [email,    setEmail]    = useState("");
   const [password, setPassword] = useState("");
   const [loading,  setLoading]  = useState(false);
+  const [showPass, setShowPass] = useState(false);
 
   const submit = async () => {
     if (!email || !password) { alert("Please fill in all fields"); return; }
@@ -15,32 +16,15 @@ function Login({ onLogin }) {
   };
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      display: "flex",
-      fontFamily: "Inter, sans-serif"
-    }}>
-      {/* LEFT: Branding panel */}
+    <div style={{ minHeight: "100vh", display: "flex", fontFamily: "Inter, sans-serif" }}>
+
+      {/* LEFT: Branding */}
       <div style={{
-        flex: 1,
-        background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 60%, #312e81 100%)",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        alignItems: "center",
-        padding: "60px 40px",
-        display: "flex"
+        flex: 1, background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 60%, #312e81 100%)",
+        display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: "60px 40px"
       }} className="hidden md:flex">
         <div style={{ maxWidth: 400, textAlign: "center" }}>
-          <div style={{
-            width: 72, height: 72,
-            background: "linear-gradient(135deg, #2563eb, #7c3aed)",
-            borderRadius: 20,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            margin: "0 auto 28px",
-            fontSize: 28, fontWeight: 800, color: "white",
-            boxShadow: "0 8px 32px rgba(124,58,237,0.4)"
-          }}>AI</div>
+          <div style={{ width: 72, height: 72, background: "linear-gradient(135deg, #2563eb, #7c3aed)", borderRadius: 20, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 28px", fontSize: 28, fontWeight: 800, color: "white", boxShadow: "0 8px 32px rgba(124,58,237,0.4)" }}>AI</div>
           <h1 style={{ color: "white", fontSize: 36, fontWeight: 800, margin: "0 0 16px", lineHeight: 1.2 }}>
             Find Your Dream Job with AI
           </h1>
@@ -54,9 +38,7 @@ function Login({ onLogin }) {
               { icon: "🚀", text: "Apply with one click and track your applications" },
             ].map((item, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 36, height: 36, background: "rgba(255,255,255,0.1)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
-                  {item.icon}
-                </div>
+                <div style={{ width: 36, height: 36, background: "rgba(255,255,255,0.1)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{item.icon}</div>
                 <span style={{ color: "#cbd5e1", fontSize: 14 }}>{item.text}</span>
               </div>
             ))}
@@ -65,15 +47,7 @@ function Login({ onLogin }) {
       </div>
 
       {/* RIGHT: Login form */}
-      <div style={{
-        width: "100%",
-        maxWidth: 480,
-        background: "#0f172a",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        padding: "48px 40px"
-      }}>
+      <div style={{ width: "100%", maxWidth: 480, background: "#0f172a", display: "flex", flexDirection: "column", justifyContent: "center", padding: "48px 40px" }}>
         <div style={{ marginBottom: 40 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 32 }}>
             <div style={{ width: 36, height: 36, background: "linear-gradient(135deg, #2563eb, #7c3aed)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: "white" }}>AI</div>
@@ -101,20 +75,33 @@ function Login({ onLogin }) {
               <label style={{ color: "#94a3b8", fontSize: 12, fontWeight: 500 }}>Password</label>
               <span onClick={() => navigate("/forgot")} style={{ color: "#60a5fa", fontSize: 12, cursor: "pointer" }}>Forgot password?</span>
             </div>
-            <input
-              type="password" placeholder="••••••••" value={password}
-              onChange={e => setPassword(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && submit()}
-              style={{ width: "100%", background: "#1e293b", border: "1px solid #334155", borderRadius: 10, padding: "12px 16px", color: "white", fontSize: 14, outline: "none", boxSizing: "border-box" }}
-              onFocus={e => e.target.style.borderColor = "#2563eb"}
-              onBlur={e => e.target.style.borderColor = "#334155"}
-            />
+            <div style={{ position: "relative" }}>
+              <input
+                type={showPass ? "text" : "password"} placeholder="••••••••" value={password}
+                onChange={e => setPassword(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && submit()}
+                style={{ width: "100%", background: "#1e293b", border: "1px solid #334155", borderRadius: 10, padding: "12px 44px 12px 16px", color: "white", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+                onFocus={e => e.target.style.borderColor = "#2563eb"}
+                onBlur={e => e.target.style.borderColor = "#334155"}
+              />
+              <button onClick={() => setShowPass(!showPass)} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "#64748b" }}>
+                {showPass ? "🙈" : "👁️"}
+              </button>
+            </div>
           </div>
 
-          <button
-            onClick={submit} disabled={loading}
-            style={{ width: "100%", background: loading ? "#4b5563" : "linear-gradient(135deg, #2563eb, #7c3aed)", color: "white", border: "none", borderRadius: 10, padding: "13px", fontSize: 15, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", marginTop: 4 }}>
-            {loading ? "Signing in..." : "Sign In →"}
+          <button onClick={submit} disabled={loading} style={{
+            width: "100%", background: loading ? "#334155" : "linear-gradient(135deg, #2563eb, #7c3aed)",
+            color: "white", border: "none", borderRadius: 10, padding: "13px", fontSize: 15,
+            fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", marginTop: 4,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8
+          }}>
+            {loading ? (
+              <>
+                <span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />
+                Signing in...
+              </>
+            ) : "Sign In →"}
           </button>
         </div>
 
@@ -124,7 +111,12 @@ function Login({ onLogin }) {
             Create one free
           </span>
         </div>
+
+        <p style={{ color: "#1e293b", fontSize: 12, textAlign: "center", marginTop: 40 }}>
+          © 2025 AI Recruit System · NLP-Based Secure Recruitment
+        </p>
       </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } } input::placeholder { color: #4b5563; }`}</style>
     </div>
   );
 }
