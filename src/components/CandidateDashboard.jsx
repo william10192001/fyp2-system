@@ -302,6 +302,7 @@ function CandidateDashboard({ user, logout }) {
                   )}
 
                   <div style={{ display: "flex", gap: 12 }}>
+                    {/* Apply button */}
                     {(() => {
                       const state = getApplyState(selectedJob.jobId);
                       const isApplying = applyingId === selectedJob.jobId;
@@ -387,55 +388,13 @@ function CandidateDashboard({ user, logout }) {
                     }}>{t.label}</button>
                   ))}
                 </div>
-
                 <div style={{ padding: "24px 36px" }}>
                   {activeDetail === "description" ? (
                     <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.9, whiteSpace: "pre-wrap" }}>{selectedJob.jobDescription || "No description provided."}</div>
                   ) : (
-                    /* ── COMPANY & BENEFITS — updated to show new fields ── */
                     <div style={{ fontSize: 13 }}>
-
-                      {/* Company Info Grid */}
-                      <div style={{ marginBottom: 24 }}>
-                        <div style={{ fontSize: 11, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>🏢 Company Information</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-                          {[
-                            ["🏢 Company",   selectedJob.companyName  || selectedJob.employerEmail || "—"],
-                            ["📍 Location",  selectedJob.location     || "Not specified"],
-                            ["💼 Job Type",  selectedJob.jobType      || "Not specified"],
-                            ["🏠 Work Mode", selectedJob.workMode     || "Not specified"],
-                            ["💰 Salary",    selectedJob.salary       || "Not disclosed"],
-                            ["📧 Contact",   selectedJob.contactEmail || selectedJob.employerEmail || "—"],
-                          ].map(([label, val]) => (
-                            <div key={label} style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 10, padding: "12px 14px" }}>
-                              <div style={{ color: "#475569", fontSize: 11, marginBottom: 4 }}>{label.split(" ")[0]} <span style={{ color: "#64748b" }}>{label.split(" ").slice(1).join(" ")}</span></div>
-                              <div style={{ color: "#e2e8f0", fontWeight: 500, fontSize: 13 }}>{val}</div>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* About Company */}
-                        {selectedJob.companyDescription ? (
-                          <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 10, padding: "14px 16px" }}>
-                            <div style={{ color: "#475569", fontSize: 11, marginBottom: 8 }}>About the Company</div>
-                            <div style={{ color: "#94a3b8", lineHeight: 1.8 }}>{selectedJob.companyDescription}</div>
-                          </div>
-                        ) : (
-                          <div style={{ color: "#374151", fontSize: 12, fontStyle: "italic" }}>No company description provided.</div>
-                        )}
-                      </div>
-
-                      {/* Benefits */}
-                      <div>
-                        <div style={{ fontSize: 11, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>🎁 Benefits & Perks</div>
-                        {selectedJob.benefits ? (
-                          <div style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: 10, padding: "16px 18px" }}>
-                            <div style={{ color: "#94a3b8", lineHeight: 1.9, whiteSpace: "pre-wrap" }}>{selectedJob.benefits}</div>
-                          </div>
-                        ) : (
-                          <div style={{ color: "#374151", fontSize: 12, fontStyle: "italic" }}>No benefits information provided.</div>
-                        )}
-                      </div>
+                      <div style={{ marginBottom: 12 }}><span style={{ fontWeight: 600, color: "#e2e8f0" }}>Company: </span><span style={{ color: "#94a3b8" }}>{selectedJob.companyName || selectedJob.employerEmail}</span></div>
+                      <div><span style={{ fontWeight: 600, color: "#e2e8f0" }}>Location: </span><span style={{ color: "#94a3b8" }}>{selectedJob.location}</span></div>
                     </div>
                   )}
                 </div>

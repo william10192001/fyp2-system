@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 const BASE = "https://fyp2-backend-gihc.onrender.com";
 
 const BADGE = {
-  "Perfect Match": { bg: "#f0fdfa", color: "#0f766e", border: "#99f6e4" },
-  "Good Match":    { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
-  "Partial Match": { bg: "#fffbeb", color: "#b45309", border: "#fde68a" },
-  "Weak Match":    { bg: "#f9fafb", color: "#4b5563", border: "#e5e7eb" },
+  "Perfect Match": { bg: "rgba(16,185,129,0.15)", color: "#34d399", border: "rgba(16,185,129,0.3)" },
+  "Good Match":    { bg: "rgba(37,99,235,0.15)",  color: "#60a5fa", border: "rgba(37,99,235,0.3)"  },
+  "Partial Match": { bg: "rgba(245,158,11,0.15)", color: "#fbbf24", border: "rgba(245,158,11,0.3)" },
+  "Weak Match":    { bg: "rgba(107,114,128,0.15)",color: "#9ca3af", border: "rgba(107,114,128,0.3)"},
 };
 
 const S = {
@@ -15,10 +15,11 @@ const S = {
   tabBar:     { background: "#111827", borderBottom: "1px solid #1f2937", padding: "0 32px", display: "flex" },
   card:       { background: "#111827", border: "1px solid #1f2937", borderRadius: 16, padding: "20px 24px", marginBottom: 12 },
   input:      { width: "100%", background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: "11px 14px", color: "white", fontSize: 14, outline: "none", boxSizing: "border-box" },
-  select:     { width: "100%", background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: "11px 14px", color: "white", fontSize: 14, outline: "none", boxSizing: "border-box", appearance: "none" },
+  select:     { width: "100%", background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: "11px 14px", color: "white", fontSize: 14, outline: "none", boxSizing: "border-box" },
   label:      { color: "#94a3b8", fontSize: 12, fontWeight: 500, display: "block", marginBottom: 6 },
   btnPrimary: { background: "linear-gradient(135deg, #2563eb, #7c3aed)", color: "white", border: "none", borderRadius: 10, padding: "10px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
   btnGray:    { background: "#1e293b", color: "#94a3b8", border: "1px solid #334155", borderRadius: 10, padding: "10px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  sectionLabel: { fontSize: 11, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, paddingBottom: 8, borderBottom: "1px solid #1f2937" },
 };
 
 const EMPTY_FORM = {
@@ -40,6 +41,10 @@ function EmployerDashboard({ user, logout }) {
   const [activeMatchJob, setActiveMatchJob] = useState(null);
   const [applications,   setApplications]   = useState([]);
   const [loadingApps,    setLoadingApps]    = useState(false);
+  const [lastRefresh,    setLastRefresh]    = useState(null);
+  const [newAppBadge,    setNewAppBadge]    = useState(false);
+  const prevAppCount     = useRef(0);
+  const autoRefreshTimer = useRef(null);
 
   const fetchJobs = async () => {
     try {
@@ -49,38 +54,55 @@ function EmployerDashboard({ user, logout }) {
     } catch (err) { console.log(err); }
   };
 
-  const fetchApplications = async () => {
-    setLoadingApps(true);
+  const fetchApplications = async (silent = false) => {
+    if (!silent) setLoadingApps(true);
     try {
       const res  = await fetch(`${BASE}/employer-applications/${user.email}`);
       const data = await res.json();
-      setApplications(Array.isArray(data) ? data : []);
+      const apps = Array.isArray(data) ? data : [];
+      if (apps.length > prevAppCount.current && prevAppCount.current > 0) {
+        setNewAppBadge(true);
+      }
+      prevAppCount.current = apps.length;
+      setApplications(apps);
+      setLastRefresh(new Date());
     } catch (err) { console.log(err); }
-    setLoadingApps(false);
+    if (!silent) setLoadingApps(false);
   };
 
   useEffect(() => { fetchJobs(); }, [user]);
-  useEffect(() => { if (activeTab === "applications") fetchApplications(); }, [activeTab]);
 
-  const openCreate = () => {
-    setEditingJob(null);
-    setForm(EMPTY_FORM);
-    setPdfFile(null);
-    setShowForm(true);
-    setResults([]);
-  };
+  useEffect(() => {
+    if (activeTab === "applications") {
+      fetchApplications();
+      setNewAppBadge(false);
+      // Auto-refresh every 30 seconds
+      autoRefreshTimer.current = setInterval(() => fetchApplications(true), 30000);
+    } else {
+      clearInterval(autoRefreshTimer.current);
+    }
+    return () => clearInterval(autoRefreshTimer.current);
+  }, [activeTab]);
+
+  // Silent background check every 60s even on other tabs
+  useEffect(() => {
+    const bg = setInterval(() => {
+      if (activeTab !== "applications") fetchApplications(true);
+    }, 60000);
+    return () => clearInterval(bg);
+  }, [activeTab, user]);
+
+  const openCreate = () => { setEditingJob(null); setForm(EMPTY_FORM); setPdfFile(null); setShowForm(true); setResults([]); };
 
   const openEdit = (job) => {
     setEditingJob(job);
     setForm({
       jobTitle: job.jobTitle || "", companyName: job.companyName || "",
       location: job.location || "", jobDescription: job.jobDescription || "",
-      salary: job.salary || "", jobType: job.jobType || "",
-      workMode: job.workMode || "", benefits: job.benefits || "",
-      companyDescription: job.companyDescription || "", contactEmail: job.contactEmail || ""
+      salary: job.salary || "", jobType: job.jobType || "", workMode: job.workMode || "",
+      benefits: job.benefits || "", companyDescription: job.companyDescription || "", contactEmail: job.contactEmail || ""
     });
-    setPdfFile(null);
-    setShowForm(true);
+    setPdfFile(null); setShowForm(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -110,8 +132,7 @@ function EmployerDashboard({ user, logout }) {
         body: JSON.stringify({ ...form, employerEmail: user.email })
       });
       const data = await res.json();
-      alert(data.msg);
-      setShowForm(false); setEditingJob(null); fetchJobs();
+      alert(data.msg); setShowForm(false); setEditingJob(null); fetchJobs();
     } catch { alert("Save failed"); }
     setSaving(false);
   };
@@ -126,7 +147,10 @@ function EmployerDashboard({ user, logout }) {
   const runMatching = async (job) => {
     setLoading(true); setResults([]); setActiveMatchJob(job._id); setShowForm(false);
     try {
-      const res  = await fetch(`${BASE}/match`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobId: job._id }) });
+      const res  = await fetch(`${BASE}/match`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job._id })
+      });
       const data = await res.json();
       setResults(Array.isArray(data) ? data : []);
     } catch { alert("Matching failed"); }
@@ -136,18 +160,21 @@ function EmployerDashboard({ user, logout }) {
 
   const updateAppStatus = async (appId, status) => {
     try {
-      await fetch(`${BASE}/application/${appId}/status`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+      await fetch(`${BASE}/application/${appId}/status`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status })
+      });
       fetchApplications();
     } catch (err) { console.log(err); }
   };
 
-  const scoreColor = (score) => score >= 70 ? "#10b981" : score >= 50 ? "#3b82f6" : score >= 30 ? "#f59e0b" : "#9ca3af";
+  const scoreColor = (s) => s >= 70 ? "#34d399" : s >= 50 ? "#60a5fa" : s >= 30 ? "#fbbf24" : "#9ca3af";
 
-  const f = (key, placeholder, type = "input") => (
+  const f = (key, label, placeholder, type = "input") => (
     <div>
-      <label style={S.label}>{placeholder}</label>
+      <label style={S.label}>{label}</label>
       {type === "textarea"
-        ? <textarea rows={4} value={form[key]} onChange={e => setForm({...form, [key]: e.target.value})} placeholder={placeholder} style={{ ...S.input, resize: "none" }} />
+        ? <textarea rows={3} value={form[key]} onChange={e => setForm({...form, [key]: e.target.value})} placeholder={placeholder} style={{ ...S.input, resize: "none" }} />
         : <input value={form[key]} onChange={e => setForm({...form, [key]: e.target.value})} placeholder={placeholder} style={S.input} />
       }
     </div>
@@ -172,7 +199,7 @@ function EmployerDashboard({ user, logout }) {
       <div style={S.tabBar}>
         {[
           { key: "jobs",         label: "📋 My Job Postings" },
-          { key: "applications", label: `📥 Applications${applications.length > 0 ? ` (${applications.length})` : ""}` },
+          { key: "applications", label: `📥 Applications${applications.length > 0 ? ` (${applications.length})` : ""}${newAppBadge ? " 🔴" : ""}` },
         ].map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key)} style={{
             padding: "14px 20px", fontSize: 13, fontWeight: 500, cursor: "pointer",
@@ -205,7 +232,7 @@ function EmployerDashboard({ user, logout }) {
 
                 {/* Section 1: Basic Info */}
                 <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 11, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>📋 Basic Information</div>
+                  <div style={S.sectionLabel}>📋 Basic Information</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
                     <div><label style={S.label}>Job Title *</label><input value={form.jobTitle} onChange={e => setForm({...form, jobTitle: e.target.value})} placeholder="e.g. Frontend Developer" style={S.input} /></div>
                     <div><label style={S.label}>Company Name</label><input value={form.companyName} onChange={e => setForm({...form, companyName: e.target.value})} placeholder="e.g. Tech Corp Sdn Bhd" style={S.input} /></div>
@@ -216,34 +243,25 @@ function EmployerDashboard({ user, logout }) {
                       <label style={S.label}>Job Type</label>
                       <select value={form.jobType} onChange={e => setForm({...form, jobType: e.target.value})} style={S.select}>
                         <option value="">Select type...</option>
-                        <option>Full-time</option>
-                        <option>Part-time</option>
-                        <option>Internship</option>
-                        <option>Contract</option>
-                        <option>Freelance</option>
+                        {["Full-time","Part-time","Internship","Contract","Freelance"].map(o => <option key={o}>{o}</option>)}
                       </select>
                     </div>
                     <div>
                       <label style={S.label}>Work Mode</label>
                       <select value={form.workMode} onChange={e => setForm({...form, workMode: e.target.value})} style={S.select}>
                         <option value="">Select mode...</option>
-                        <option>On-site</option>
-                        <option>Remote</option>
-                        <option>Hybrid</option>
+                        {["On-site","Remote","Hybrid"].map(o => <option key={o}>{o}</option>)}
                       </select>
                     </div>
                   </div>
-                  <div>
-                    <label style={S.label}>Salary Range</label>
-                    <input value={form.salary} onChange={e => setForm({...form, salary: e.target.value})} placeholder="e.g. RM 3,000 – RM 5,000 / month" style={S.input} />
-                  </div>
+                  <div><label style={S.label}>Salary Range</label><input value={form.salary} onChange={e => setForm({...form, salary: e.target.value})} placeholder="e.g. RM 3,000 – RM 5,000 / month" style={S.input} /></div>
                 </div>
 
                 {/* Section 2: Job Description */}
                 <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 11, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>📄 Job Description</div>
+                  <div style={S.sectionLabel}>📄 Job Description</div>
                   <div style={{ marginBottom: 14 }}>
-                    <label style={S.label}>Upload Job Description PDF <span style={{ color: "#475569" }}>(optional — auto-fills description below)</span></label>
+                    <label style={{ ...S.label }}>Upload Job Description PDF <span style={{ color: "#475569" }}>(optional — auto-fills below)</span></label>
                     <label style={{ display: "flex", alignItems: "center", gap: 12, border: "2px dashed #334155", borderRadius: 12, padding: "14px 18px", cursor: "pointer" }}>
                       <span style={{ fontSize: 22 }}>📄</span>
                       <span style={{ color: pdfFile ? "#60a5fa" : "#475569", fontSize: 13 }}>
@@ -261,14 +279,14 @@ function EmployerDashboard({ user, logout }) {
 
                 {/* Section 3: Company & Benefits */}
                 <div style={{ marginBottom: 24 }}>
-                  <div style={{ fontSize: 11, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>🏢 Company & Benefits</div>
+                  <div style={S.sectionLabel}>🏢 Company & Benefits</div>
                   <div style={{ marginBottom: 14 }}>
                     <label style={S.label}>About the Company</label>
                     <textarea rows={3} value={form.companyDescription} onChange={e => setForm({...form, companyDescription: e.target.value})} placeholder="e.g. We are a fast-growing tech startup based in Johor Bahru..." style={{ ...S.input, resize: "none" }} />
                   </div>
                   <div style={{ marginBottom: 14 }}>
                     <label style={S.label}>Benefits / Perks</label>
-                    <textarea rows={3} value={form.benefits} onChange={e => setForm({...form, benefits: e.target.value})} placeholder="e.g. EPF, SOCSO, Medical Insurance, Annual Leave, Flexible Hours, Team Bonding Activities..." style={{ ...S.input, resize: "none" }} />
+                    <textarea rows={3} value={form.benefits} onChange={e => setForm({...form, benefits: e.target.value})} placeholder="e.g. EPF, SOCSO, Medical Insurance, Annual Leave, Flexible Hours..." style={{ ...S.input, resize: "none" }} />
                   </div>
                   <div>
                     <label style={S.label}>HR / Contact Email</label>
@@ -304,9 +322,9 @@ function EmployerDashboard({ user, logout }) {
                       <div style={{ color: "#94a3b8", fontSize: 13, display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 4 }}>
                         {job.companyName && <span>🏢 {job.companyName}</span>}
                         <span>📍 {job.location || "Location not set"}</span>
-                        {job.jobType   && <span>💼 {job.jobType}</span>}
-                        {job.workMode  && <span>🏠 {job.workMode}</span>}
-                        {job.salary    && <span>💰 {job.salary}</span>}
+                        {job.jobType  && <span>💼 {job.jobType}</span>}
+                        {job.workMode && <span>🏠 {job.workMode}</span>}
+                        {job.salary   && <span>💰 {job.salary}</span>}
                       </div>
                       <div style={{ color: "#475569", fontSize: 12, marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {job.jobDescription?.substring(0, 120)}...
@@ -328,11 +346,12 @@ function EmployerDashboard({ user, logout }) {
               ))}
             </div>
 
-            {/* AI MATCHING RESULTS */}
+            {/* AI MATCH RESULTS */}
             {loading && (
               <div style={{ textAlign: "center", padding: "60px 20px", color: "#94a3b8" }}>
                 <div style={{ fontSize: 40, marginBottom: 12 }}>🤖</div>
                 <p style={{ fontSize: 15 }}>AI is analyzing all candidates...</p>
+                <p style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>Only showing candidates with ≥ 60% match</p>
               </div>
             )}
 
@@ -341,6 +360,7 @@ function EmployerDashboard({ user, logout }) {
                 <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Matching Results</h2>
                 <p style={{ color: "#6b7280", fontSize: 13, marginBottom: 24 }}>
                   {results.length} candidates matched for: <strong style={{ color: "white" }}>{jobs.find(j => j._id === activeMatchJob)?.jobTitle}</strong>
+                  <span style={{ marginLeft: 8, color: "#475569", fontSize: 11 }}>(≥ 60% only)</span>
                 </p>
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                   {results.map((c, i) => {
@@ -357,7 +377,7 @@ function EmployerDashboard({ user, logout }) {
                           </div>
                           <div style={{ textAlign: "center" }}>
                             <div style={{ fontSize: 36, fontWeight: 800, color: scoreColor(c.score) }}>{c.score}%</div>
-                            <div style={{ color: "#475569", fontSize: 11 }}>AI Score</div>
+                            <div style={{ color: "#475569", fontSize: 11 }}>Match Score</div>
                           </div>
                         </div>
                         <div style={{ marginTop: 12, background: "#1e293b", borderRadius: 99, height: 4 }}>
@@ -421,12 +441,15 @@ function EmployerDashboard({ user, logout }) {
         {/* ════ APPLICATIONS TAB ════ */}
         {activeTab === "applications" && (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <div>
                 <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Applications Received</h2>
-                <p style={{ color: "#6b7280", fontSize: 13, margin: "4px 0 0" }}>Candidates who applied to your job postings</p>
+                <p style={{ color: "#6b7280", fontSize: 13, margin: "4px 0 0" }}>
+                  Candidates who applied to your job postings
+                  {lastRefresh && <span style={{ marginLeft: 8, color: "#374151" }}>· Updated {lastRefresh.toLocaleTimeString()}</span>}
+                </p>
               </div>
-              <button onClick={fetchApplications} style={S.btnGray}>🔄 Refresh</button>
+              <button onClick={() => fetchApplications()} style={S.btnGray}>🔄 Refresh</button>
             </div>
 
             {loadingApps && (
@@ -440,57 +463,63 @@ function EmployerDashboard({ user, logout }) {
               <div style={{ textAlign: "center", padding: "60px 20px", color: "#374151" }}>
                 <div style={{ fontSize: 48, marginBottom: 14 }}>📭</div>
                 <p style={{ fontSize: 15 }}>No applications yet.</p>
-                <p style={{ fontSize: 13, color: "#4b5563", marginTop: 8 }}>Applications will appear here when candidates apply to your jobs.</p>
+                <p style={{ fontSize: 13, color: "#4b5563", marginTop: 8 }}>Applications will appear here when candidates apply.</p>
               </div>
             )}
 
             {!loadingApps && applications.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {applications.map((app, i) => {
-                  const statusCfg = {
-                    pending:  { bg: "rgba(37,99,235,0.15)",  color: "#60a5fa",  border: "rgba(37,99,235,0.3)",  label: "Under Review" },
-                    accepted: { bg: "rgba(16,185,129,0.15)", color: "#34d399",  border: "rgba(16,185,129,0.3)", label: "✓ Accepted"   },
-                    rejected: { bg: "rgba(239,68,68,0.15)",  color: "#f87171",  border: "rgba(239,68,68,0.3)",  label: "✗ Rejected"   },
-                  }[app.status] || { bg: "rgba(37,99,235,0.15)", color: "#60a5fa", border: "rgba(37,99,235,0.3)", label: "Under Review" };
-
+                  const score = app.matchScore || 0;
+                  const rec   = score >= 70 ? "Perfect Match" : score >= 50 ? "Good Match" : score >= 30 ? "Partial Match" : "Weak Match";
+                  const badge = BADGE[rec];
                   return (
                     <div key={i} style={S.card}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
                             <span style={{ fontWeight: 700, fontSize: 16 }}>{app.candidateName || "Candidate"}</span>
-                            <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 99, fontWeight: 600, background: statusCfg.bg, color: statusCfg.color, border: `1px solid ${statusCfg.border}` }}>
-                              {statusCfg.label}
+                            <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 99, fontWeight: 600,
+                              background: app.status === "accepted" ? "rgba(16,185,129,0.15)" : app.status === "rejected" ? "rgba(239,68,68,0.15)" : "rgba(37,99,235,0.15)",
+                              color:      app.status === "accepted" ? "#34d399" : app.status === "rejected" ? "#f87171" : "#60a5fa",
+                              border:     `1px solid ${app.status === "accepted" ? "rgba(16,185,129,0.3)" : app.status === "rejected" ? "rgba(239,68,68,0.3)" : "rgba(37,99,235,0.3)"}`
+                            }}>
+                              {app.status === "pending" ? "Under Review" : app.status === "accepted" ? "✓ Accepted" : "✗ Rejected"}
                             </span>
                           </div>
                           <div style={{ color: "#94a3b8", fontSize: 13, marginBottom: 4 }}>📧 {app.candidateEmail}</div>
-                          <div style={{ color: "#475569", fontSize: 12, marginBottom: 4 }}>
-                            Applied for: <strong style={{ color: "#94a3b8" }}>{app.jobTitle}</strong>
+                          <div style={{ color: "#475569", fontSize: 12, marginBottom: 8 }}>
+                            Applied for: <strong style={{ color: "#94a3b8" }}>{app.jobTitle}</strong> ·{" "}
+                            {new Date(app.createdAt).toLocaleDateString("en-MY", { year: "numeric", month: "short", day: "numeric" })}
                           </div>
-                          <div style={{ color: "#374151", fontSize: 11 }}>
-                            📅 {new Date(app.createdAt).toLocaleDateString("en-MY", { year: "numeric", month: "long", day: "numeric" })}
+                          {/* Match score */}
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <span style={{ fontSize: 20, fontWeight: 800, color: scoreColor(score) }}>{score}%</span>
+                            <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 99, fontWeight: 600, background: badge.bg, color: badge.color, border: `1px solid ${badge.border}` }}>{rec}</span>
+                            <div style={{ flex: 1, maxWidth: 140, background: "#1e293b", borderRadius: 99, height: 4 }}>
+                              <div style={{ height: 4, borderRadius: 99, background: `linear-gradient(90deg,#2563eb,${scoreColor(score)})`, width: `${score}%` }} />
+                            </div>
                           </div>
+                          {/* Matched keywords */}
+                          {app.matchedKeywords?.length > 0 && (
+                            <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                              {app.matchedKeywords.map((kw, j) => (
+                                <span key={j} style={{ background: "rgba(16,185,129,0.12)", color: "#34d399", fontSize: 11, padding: "3px 10px", borderRadius: 99 }}>✓ {kw}</span>
+                              ))}
+                            </div>
+                          )}
                         </div>
 
-                        {/* Action buttons — only show if pending */}
+                        {/* Action buttons */}
                         <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0 }}>
                           {app.status === "pending" && (
                             <>
-                              <button
-                                onClick={() => { if (window.confirm(`Accept ${app.candidateName}?`)) updateAppStatus(app._id, "accepted"); }}
-                                style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
-                              >✓ Accept</button>
-                              <button
-                                onClick={() => { if (window.confirm(`Reject ${app.candidateName}?`)) updateAppStatus(app._id, "rejected"); }}
-                                style={{ background: "rgba(239,68,68,0.1)", color: "#f87171", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
-                              >✗ Reject</button>
+                              <button onClick={() => updateAppStatus(app._id, "accepted")} style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>✓ Accept</button>
+                              <button onClick={() => updateAppStatus(app._id, "rejected")} style={{ background: "rgba(239,68,68,0.1)", color: "#f87171", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>✗ Reject</button>
                             </>
                           )}
                           {app.status !== "pending" && (
-                            <button
-                              onClick={() => { if (window.confirm("Reset this application to Under Review?")) updateAppStatus(app._id, "pending"); }}
-                              style={{ background: "#1e293b", color: "#94a3b8", border: "1px solid #334155", borderRadius: 8, padding: "8px 16px", fontSize: 12, cursor: "pointer" }}
-                            >↩ Reset</button>
+                            <button onClick={() => updateAppStatus(app._id, "pending")} style={{ background: "#1e293b", color: "#94a3b8", border: "1px solid #334155", borderRadius: 8, padding: "8px 16px", fontSize: 12, cursor: "pointer" }}>↩ Reset</button>
                           )}
                         </div>
                       </div>
