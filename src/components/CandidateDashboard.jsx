@@ -393,8 +393,39 @@ function CandidateDashboard({ user, logout }) {
                     <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.9, whiteSpace: "pre-wrap" }}>{selectedJob.jobDescription || "No description provided."}</div>
                   ) : (
                     <div style={{ fontSize: 13 }}>
-                      <div style={{ marginBottom: 12 }}><span style={{ fontWeight: 600, color: "#e2e8f0" }}>Company: </span><span style={{ color: "#94a3b8" }}>{selectedJob.companyName || selectedJob.employerEmail}</span></div>
-                      <div><span style={{ fontWeight: 600, color: "#e2e8f0" }}>Location: </span><span style={{ color: "#94a3b8" }}>{selectedJob.location}</span></div>
+                      {/* Company Info */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+                        {[
+                          ["🏢 Company",   selectedJob.companyName || selectedJob.employerEmail],
+                          ["📍 Location",  selectedJob.location || "Not specified"],
+                          ["💼 Job Type",  selectedJob.jobType  || "Not specified"],
+                          ["🏠 Work Mode", selectedJob.workMode || "Not specified"],
+                          ["💰 Salary",    selectedJob.salary   || "Not specified"],
+                          ["📧 Contact",   selectedJob.contactEmail || selectedJob.employerEmail],
+                        ].map(([label, val]) => (
+                          <div key={label} style={{ background: "#1e293b", borderRadius: 10, padding: "12px 14px" }}>
+                            <div style={{ color: "#475569", fontSize: 11, marginBottom: 4 }}>{label}</div>
+                            <div style={{ color: "#e2e8f0", fontSize: 13 }}>{val}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {/* About Company */}
+                      {selectedJob.companyDescription && (
+                        <div style={{ background: "#1e293b", borderRadius: 10, padding: "14px 16px", marginBottom: 12 }}>
+                          <div style={{ color: "#475569", fontSize: 11, marginBottom: 8 }}>🏷️ About the Company</div>
+                          <div style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{selectedJob.companyDescription}</div>
+                        </div>
+                      )}
+                      {/* Benefits */}
+                      {selectedJob.benefits && (
+                        <div style={{ background: "#1e293b", borderRadius: 10, padding: "14px 16px" }}>
+                          <div style={{ color: "#475569", fontSize: 11, marginBottom: 8 }}>🎁 Benefits & Perks</div>
+                          <div style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{selectedJob.benefits}</div>
+                        </div>
+                      )}
+                      {!selectedJob.companyDescription && !selectedJob.benefits && (
+                        <div style={{ color: "#475569", fontSize: 13 }}>No additional company information provided.</div>
+                      )}
                     </div>
                   )}
                 </div>
