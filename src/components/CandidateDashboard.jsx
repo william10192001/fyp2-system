@@ -27,9 +27,9 @@ function CandidateDashboard({ user, logout }) {
   const [myData,       setMyData]       = useState(null);
   const [activeDetail, setActiveDetail] = useState("description");
   const [savedJobs,    setSavedJobs]    = useState([]);
-  const [appliedJobs,  setAppliedJobs]  = useState([]);   // pending/accepted
-  const [rejectedJobs, setRejectedJobs] = useState([]);   // rejected → can re-apply
-  const [appScoreMap,  setAppScoreMap]  = useState({});   // jobId → {score, matchedKeywords}
+  const [appliedJobs,  setAppliedJobs]  = useState([]);
+  const [rejectedJobs, setRejectedJobs] = useState([]);
+  const [appScoreMap,  setAppScoreMap]  = useState({});
   const [applyingId,   setApplyingId]   = useState(null);
   const [filterLevel,  setFilterLevel]  = useState("All");
   const [sortOrder,    setSortOrder]    = useState("score");
@@ -51,7 +51,6 @@ function CandidateDashboard({ user, logout }) {
       const apps = Array.isArray(appData) ? appData : [];
       setAppliedJobs(apps.filter(a => a.status !== "rejected").map(a => a.jobId));
       setRejectedJobs(apps.filter(a => a.status === "rejected").map(a => a.jobId));
-      // Build score map for consistency
       const scoreMap = {};
       apps.forEach(a => { scoreMap[a.jobId] = { score: a.matchScore || 0, matchedKeywords: a.matchedKeywords || [] }; });
       setAppScoreMap(scoreMap);
@@ -106,7 +105,6 @@ function CandidateDashboard({ user, logout }) {
 
   useEffect(() => { fetchMyData(); fetchJobs(); fetchAppliedAndSaved(); }, [user]);
 
-  // ← Hide applied (pending/accepted) jobs from Job Matches tab
   const displayedJobs = jobs
     .filter(job => !appliedJobs.includes(job.jobId))
     .filter(job => filterLevel === "All" || job.recommendation === filterLevel)
@@ -152,11 +150,11 @@ function CandidateDashboard({ user, logout }) {
       {/* TABS */}
       <div style={S.tabBar}>
         {[
-          { key: "jobs",      label: "🎯 Job Matches"       },
-          { key: "applied",   label: "✅ My Applications"   },
-          { key: "saved",     label: "⭐ Interested Jobs"   },
-          { key: "profile",   label: "👤 My Profile"        },
-          { key: "resume",    label: "📄 Resume Upload"     },
+          { key: "jobs",    label: "🎯 Job Matches"    },
+          { key: "applied", label: "✅ My Applications" },
+          { key: "saved",   label: "⭐ Interested Jobs"  },
+          { key: "profile", label: "👤 My Profile"      },
+          { key: "resume",  label: "📄 Resume Upload"   },
         ].map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key)} style={{
             padding: "14px 18px", fontSize: 13, fontWeight: 500, cursor: "pointer", background: "none", border: "none",
@@ -201,7 +199,7 @@ function CandidateDashboard({ user, logout }) {
               {!loadingJobs && displayedJobs.length === 0 && (
                 <div style={{ textAlign: "center", padding: "60px 20px", color: "#475569" }}>
                   <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
-                  <p style={{ fontSize: 13 }}>{jobs.length === 0 ? "No jobs yet — upload your resume first" : appliedJobs.length > 0 ? "All available jobs applied! Check My Applications." : "No jobs match this filter"}</p>
+                  <p style={{ fontSize: 13 }}>{jobs.length === 0 ? "No jobs yet — upload your resume first" : appliedJobs.length > 0 ? "All available jobs applied!" : "No jobs match this filter"}</p>
                 </div>
               )}
               {!loadingJobs && displayedJobs.map((job, i) => {
@@ -215,7 +213,7 @@ function CandidateDashboard({ user, logout }) {
                       {state === "rejected" && <span style={{ marginLeft: 6, fontSize: 10, background: "rgba(239,68,68,0.15)", color: "#f87171", padding: "2px 7px", borderRadius: 99, fontWeight: 600 }}>Rejected</span>}
                     </div>
                     <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 2 }}>📍 {job.location}</div>
-                    <div style={{ fontSize: 11, color: "#374151", marginBottom: 12 }}>Posted {job.daysAgo === 0 ? "today" : job.daysAgo === 1 ? "yesterday" : `${job.daysAgo} days ago`}</div>
+                    <div style={{ fontSize: 11, color: "#374151", marginBottom: 10 }}>Posted {job.daysAgo === 0 ? "today" : job.daysAgo === 1 ? "yesterday" : `${job.daysAgo} days ago`}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <svg width="18" height="18" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="none" stroke={ms.hex} strokeWidth="1.5" opacity="0.2"/><circle cx="10" cy="10" r="6" fill="none" stroke={ms.hex} strokeWidth="1.5" opacity="0.45"/><circle cx="10" cy="10" r="3" fill={ms.hex}/></svg>
                       <span style={{ fontSize: 12, fontWeight: 600, color: ms.text }}>{job.score}% · {job.recommendation}</span>
@@ -258,38 +256,59 @@ function CandidateDashboard({ user, logout }) {
                   </div>
                 </div>
 
-                {/* Match Visualization */}
+                {/* NLP Match Score */}
                 <div style={{ padding: "20px 36px", borderBottom: "1px solid #1f2937" }}>
                   {analyzing ? (
                     <div style={{ color: "#6b7280", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ width: 14, height: 14, border: "2px solid #334155", borderTopColor: "#2563eb", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />
-                      AI is analyzing your match...
+                      Calculating keyword match...
                     </div>
                   ) : (() => {
-                    const d       = aiAnalysis || selectedJob;
-                    const rec     = d.recommendation || selectedJob.recommendation;
-                    const ms      = MS[rec] || MS["Weak Match"];
+                    const d   = aiAnalysis || selectedJob;
+                    const score = d.score ?? selectedJob.score;
+                    const rec = score >= 70 ? "Perfect Match" : score >= 50 ? "Good Match" : score >= 30 ? "Partial Match" : "Weak Match";
+                    const ms  = MS[rec] || MS["Weak Match"];
                     const matched = d.matchedSkills || selectedJob.matchedSkills || [];
                     const missing = d.missingSkills || [];
                     return (
-                      <div style={{ display: "flex", gap: 18, padding: 16, borderRadius: 14, background: ms.bg, border: `1px solid ${ms.border}` }}>
-                        <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                          <svg width="56" height="56" viewBox="0 0 56 56">
-                            <circle cx="28" cy="28" r="25" fill="none" stroke={ms.hex} strokeWidth="2" opacity="0.15"/>
-                            <circle cx="28" cy="28" r="17" fill="none" stroke={ms.hex} strokeWidth="2" opacity="0.35"/>
-                            <circle cx="28" cy="28" r="9"  fill={ms.hex} opacity="0.5"/>
-                            <circle cx="28" cy="28" r="5"  fill={ms.hex}/>
-                          </svg>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: ms.text }}>{d.score || selectedJob.score}%</span>
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: ms.text, marginBottom: 10 }}>{rec}</div>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-                            {matched.map((s, i) => <span key={i} style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", fontSize: 11, padding: "3px 10px", borderRadius: 99 }}>✓ {s}</span>)}
-                            {missing.slice(0, 6).map((s, i) => <span key={i} style={{ background: "rgba(107,114,128,0.15)", color: "#9ca3af", fontSize: 11, padding: "3px 10px", borderRadius: 99 }}>○ {s}</span>)}
+                      <div>
+                        {/* Score card */}
+                        <div style={{ display: "flex", gap: 18, padding: 16, borderRadius: 14, background: ms.bg, border: `1px solid ${ms.border}`, marginBottom: 12 }}>
+                          <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                            <svg width="56" height="56" viewBox="0 0 56 56">
+                              <circle cx="28" cy="28" r="25" fill="none" stroke={ms.hex} strokeWidth="2" opacity="0.15"/>
+                              <circle cx="28" cy="28" r="17" fill="none" stroke={ms.hex} strokeWidth="2" opacity="0.35"/>
+                              <circle cx="28" cy="28" r="9"  fill={ms.hex} opacity="0.5"/>
+                              <circle cx="28" cy="28" r="5"  fill={ms.hex}/>
+                            </svg>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: ms.text }}>{score}%</span>
                           </div>
-                          {aiAnalysis?.summary && <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 8, lineHeight: 1.7 }}>{aiAnalysis.summary}</p>}
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: ms.text, marginBottom: 6 }}>
+                              {rec} — Keyword Match Score
+                            </div>
+                            <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>
+                              Based on exact NLP keyword matching between your resume and this job's requirements.
+                            </div>
+                            {matched.length > 0 && (
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+                                {matched.map((s, i) => <span key={i} style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", fontSize: 11, padding: "3px 10px", borderRadius: 99 }}>✓ {s}</span>)}
+                              </div>
+                            )}
+                            {missing.length > 0 && (
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                {missing.slice(0, 6).map((s, i) => <span key={i} style={{ background: "rgba(107,114,128,0.15)", color: "#9ca3af", fontSize: 11, padding: "3px 10px", borderRadius: 99 }}>○ {s}</span>)}
+                              </div>
+                            )}
+                          </div>
                         </div>
+                        {/* AI summary */}
+                        {d.summary && (
+                          <div style={{ background: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.2)", borderRadius: 10, padding: "12px 14px" }}>
+                            <div style={{ fontSize: 11, color: "#7c3aed", fontWeight: 600, marginBottom: 6 }}>🤖 AI Analysis</div>
+                            <p style={{ fontSize: 12, color: "#94a3b8", margin: 0, lineHeight: 1.7 }}>{d.summary}</p>
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
@@ -298,7 +317,7 @@ function CandidateDashboard({ user, logout }) {
                 {/* Job Keywords Library */}
                 {selectedJob.jobKeywords?.length > 0 && (
                   <div style={{ padding: "16px 36px", borderBottom: "1px solid #1f2937" }}>
-                    <div style={{ fontSize: 11, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>🔑 Job Keyword Library ({selectedJob.jobKeywords.length} keywords)</div>
+                    <div style={{ fontSize: 11, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>🔑 Job Keyword Library ({selectedJob.jobKeywords.length})</div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 100, overflowY: "auto" }}>
                       {selectedJob.jobKeywords.map((kw, i) => (
                         <span key={i} style={{ background: "#1e293b", color: "#94a3b8", fontSize: 11, padding: "3px 10px", borderRadius: 99, border: "1px solid #334155" }}>{kw}</span>
@@ -319,32 +338,15 @@ function CandidateDashboard({ user, logout }) {
                   ) : (
                     <div style={{ fontSize: 13 }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-                        {[
-                          ["🏢 Company",   selectedJob.companyName || selectedJob.employerEmail],
-                          ["📍 Location",  selectedJob.location || "Not specified"],
-                          ["💼 Job Type",  selectedJob.jobType  || "Not specified"],
-                          ["🏠 Work Mode", selectedJob.workMode || "Not specified"],
-                          ["💰 Salary",    selectedJob.salary   || "Not specified"],
-                          ["📧 Contact",   selectedJob.contactEmail || selectedJob.employerEmail],
-                        ].map(([label, val]) => (
+                        {[["🏢 Company", selectedJob.companyName || selectedJob.employerEmail],["📍 Location", selectedJob.location||"Not specified"],["💼 Job Type", selectedJob.jobType||"Not specified"],["🏠 Work Mode", selectedJob.workMode||"Not specified"],["💰 Salary", selectedJob.salary||"Not specified"],["📧 Contact", selectedJob.contactEmail||selectedJob.employerEmail]].map(([label, val]) => (
                           <div key={label} style={{ background: "#1e293b", borderRadius: 10, padding: "12px 14px" }}>
                             <div style={{ color: "#475569", fontSize: 11, marginBottom: 4 }}>{label}</div>
                             <div style={{ color: "#e2e8f0", fontSize: 13 }}>{val}</div>
                           </div>
                         ))}
                       </div>
-                      {selectedJob.companyDescription && (
-                        <div style={{ background: "#1e293b", borderRadius: 10, padding: "14px 16px", marginBottom: 12 }}>
-                          <div style={{ color: "#475569", fontSize: 11, marginBottom: 8 }}>🏷️ About the Company</div>
-                          <div style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{selectedJob.companyDescription}</div>
-                        </div>
-                      )}
-                      {selectedJob.benefits && (
-                        <div style={{ background: "#1e293b", borderRadius: 10, padding: "14px 16px" }}>
-                          <div style={{ color: "#475569", fontSize: 11, marginBottom: 8 }}>🎁 Benefits & Perks</div>
-                          <div style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{selectedJob.benefits}</div>
-                        </div>
-                      )}
+                      {selectedJob.companyDescription && <div style={{ background: "#1e293b", borderRadius: 10, padding: "14px 16px", marginBottom: 12 }}><div style={{ color: "#475569", fontSize: 11, marginBottom: 8 }}>🏷️ About the Company</div><div style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{selectedJob.companyDescription}</div></div>}
+                      {selectedJob.benefits && <div style={{ background: "#1e293b", borderRadius: 10, padding: "14px 16px" }}><div style={{ color: "#475569", fontSize: 11, marginBottom: 8 }}>🎁 Benefits & Perks</div><div style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{selectedJob.benefits}</div></div>}
                       {!selectedJob.companyDescription && !selectedJob.benefits && <div style={{ color: "#475569", fontSize: 13 }}>No additional company info provided.</div>}
                     </div>
                   )}
@@ -361,7 +363,7 @@ function CandidateDashboard({ user, logout }) {
       )}
 
       {activeTab === "applied"  && <AppliedTab email={user.email} myData={myData} onAppliedChange={fetchAppliedAndSaved} />}
-      {activeTab === "saved"    && <SavedTab   email={user.email} />}
+      {activeTab === "saved"    && <SavedTab   email={user.email} onToggle={toggleSaveJob} savedJobs={savedJobs} setSavedJobs={setSavedJobs} />}
 
       {activeTab === "profile" && (
         <div style={{ maxWidth: 600, margin: "32px auto", background: "#111827", border: "1px solid #1f2937", borderRadius: 16, padding: 32 }}>
@@ -381,7 +383,7 @@ function CandidateDashboard({ user, logout }) {
 
 /* ── My Applications Tab ── */
 function AppliedTab({ email, myData, onAppliedChange }) {
-  const [apps,    setApps]    = useState([]);
+  const [apps, setApps] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const fetchApps = () => {
@@ -403,19 +405,17 @@ function AppliedTab({ email, myData, onAppliedChange }) {
   };
 
   const statusCfg = {
-    pending:  { bg: "rgba(37,99,235,0.15)",  color: "#60a5fa", border: "rgba(37,99,235,0.3)",  label: "Under Review"               },
+    pending:  { bg: "rgba(37,99,235,0.15)",  color: "#60a5fa", border: "rgba(37,99,235,0.3)",  label: "Under Review"                 },
     accepted: { bg: "rgba(16,185,129,0.15)", color: "#34d399", border: "rgba(16,185,129,0.3)", label: "✓ Accepted for Future Process" },
-    rejected: { bg: "rgba(239,68,68,0.15)",  color: "#f87171", border: "rgba(239,68,68,0.3)",  label: "✗ Rejected"                 },
+    rejected: { bg: "rgba(239,68,68,0.15)",  color: "#f87171", border: "rgba(239,68,68,0.3)",  label: "✗ Rejected"                   },
   };
-
   const myKeywords = myData?.resumeKeywords || [];
 
   return (
     <div style={{ maxWidth: 760, margin: "32px auto", padding: "0 16px" }}>
       <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 20 }}>My Applications ({apps.length})</h2>
-      {loading ? (
-        <div style={{ textAlign: "center", padding: "60px 20px", color: "#475569" }}>Loading...</div>
-      ) : apps.length === 0 ? (
+      {loading ? <div style={{ textAlign: "center", padding: "60px 20px", color: "#475569" }}>Loading...</div>
+      : apps.length === 0 ? (
         <div style={{ textAlign: "center", padding: "60px 20px", color: "#475569" }}>
           <div style={{ fontSize: 40, marginBottom: 10 }}>📋</div>
           <p>No applications yet. Go to Job Matches and click "Apply Now"!</p>
@@ -424,7 +424,6 @@ function AppliedTab({ email, myData, onAppliedChange }) {
         const s = statusCfg[a.status] || statusCfg.pending;
         return (
           <div key={i} style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 14, padding: "20px 24px", marginBottom: 14 }}>
-            {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
               <div>
                 <div style={{ fontWeight: 700, color: "white", fontSize: 15 }}>{a.jobTitle || "Job Position"}</div>
@@ -439,43 +438,29 @@ function AppliedTab({ email, myData, onAppliedChange }) {
                 )}
               </div>
             </div>
-
-            {/* Match Score */}
             {a.matchScore > 0 && (
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                 <span style={{ fontSize: 18, fontWeight: 800, color: a.matchScore >= 70 ? "#34d399" : a.matchScore >= 50 ? "#60a5fa" : a.matchScore >= 30 ? "#fbbf24" : "#9ca3af" }}>{a.matchScore}%</span>
                 <div style={{ flex: 1, maxWidth: 160, background: "#1e293b", borderRadius: 99, height: 4 }}>
                   <div style={{ height: 4, borderRadius: 99, background: a.matchScore >= 70 ? "#34d399" : a.matchScore >= 50 ? "#60a5fa" : "#fbbf24", width: `${a.matchScore}%` }} />
                 </div>
-                <span style={{ fontSize: 12, color: "#475569" }}>Match Score</span>
+                <span style={{ fontSize: 12, color: "#475569" }}>Keyword Match</span>
               </div>
             )}
-
-            {/* Keyword Match Panel */}
             {a.matchedKeywords?.length > 0 && (
               <div style={{ background: "#0f172a", border: "1px solid #1f2937", borderRadius: 10, padding: "14px 16px", marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>
-                  ✅ Your Matched Keywords for this Position ({a.matchedKeywords.length})
-                </div>
+                <div style={{ fontSize: 11, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>✅ Matched Keywords ({a.matchedKeywords.length})</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {a.matchedKeywords.map((kw, j) => (
-                    <span key={j} style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", fontSize: 11, padding: "3px 10px", borderRadius: 99, border: "1px solid rgba(16,185,129,0.25)" }}>✓ {kw}</span>
-                  ))}
+                  {a.matchedKeywords.map((kw, j) => <span key={j} style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", fontSize: 11, padding: "3px 10px", borderRadius: 99, border: "1px solid rgba(16,185,129,0.25)" }}>✓ {kw}</span>)}
                 </div>
               </div>
             )}
-
-            {/* Resume Keywords summary */}
             {myKeywords.length > 0 && (
               <div style={{ background: "#0f172a", border: "1px solid #1f2937", borderRadius: 10, padding: "14px 16px" }}>
-                <div style={{ fontSize: 11, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>
-                  📄 Your Resume Keywords ({myKeywords.length} total)
-                </div>
+                <div style={{ fontSize: 11, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>📄 Your Resume Keywords ({myKeywords.length})</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5, maxHeight: 80, overflowY: "auto" }}>
-                  {myKeywords.slice(0, 50).map((kw, j) => (
-                    <span key={j} style={{ background: "#1e293b", color: "#64748b", fontSize: 10, padding: "2px 8px", borderRadius: 99, border: "1px solid #334155" }}>{kw}</span>
-                  ))}
-                  {myKeywords.length > 50 && <span style={{ color: "#475569", fontSize: 10, padding: "2px 8px" }}>+{myKeywords.length - 50} more</span>}
+                  {myKeywords.slice(0, 50).map((kw, j) => <span key={j} style={{ background: "#1e293b", color: "#64748b", fontSize: 10, padding: "2px 8px", borderRadius: 99, border: "1px solid #334155" }}>{kw}</span>)}
+                  {myKeywords.length > 50 && <span style={{ color: "#475569", fontSize: 10 }}>+{myKeywords.length - 50} more</span>}
                 </div>
               </div>
             )}
@@ -486,12 +471,29 @@ function AppliedTab({ email, myData, onAppliedChange }) {
   );
 }
 
-/* ── Interested Jobs Tab ── */
-function SavedTab({ email }) {
-  const [saved, setSaved] = useState([]);
+/* ── Interested Jobs Tab — with Remove + expandable detail ── */
+function SavedTab({ email, onToggle, savedJobs, setSavedJobs }) {
+  const [saved,    setSaved]    = useState([]);
+  const [expanded, setExpanded] = useState(null);
+  const [removing, setRemoving] = useState(null);
+
   useEffect(() => {
-    fetch(`${BASE}/saved-jobs/${email}`).then(r => r.json()).then(data => setSaved(Array.isArray(data) ? data : []));
+    fetch(`${BASE}/saved-jobs/${email}`)
+      .then(r => r.json()).then(data => setSaved(Array.isArray(data) ? data : []));
   }, [email]);
+
+  const removeJob = async (jobId) => {
+    setRemoving(jobId);
+    try {
+      await fetch(`${BASE}/toggle-save-job`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId, candidateEmail: email, action: "unsave" })
+      });
+      setSaved(prev => prev.filter(j => j._id.toString() !== jobId));
+      if (setSavedJobs) setSavedJobs(prev => prev.filter(id => id !== jobId));
+    } catch (err) { console.log(err); }
+    setRemoving(null);
+  };
 
   return (
     <div style={{ maxWidth: 720, margin: "32px auto", padding: "0 16px" }}>
@@ -499,17 +501,63 @@ function SavedTab({ email }) {
       {saved.length === 0 ? (
         <div style={{ textAlign: "center", padding: "60px 20px", color: "#475569" }}>
           <div style={{ fontSize: 40, marginBottom: 10 }}>⭐</div>
-          <p>No interested jobs yet. Mark jobs you're interested in from Job Matches!</p>
+          <p>No interested jobs yet. Mark jobs from Job Matches!</p>
         </div>
-      ) : saved.map((job, i) => (
-        <div key={i} style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 14, padding: "16px 20px", marginBottom: 12 }}>
-          <div style={{ fontWeight: 600, color: "#a78bfa", fontSize: 14 }}>{job.jobTitle}</div>
-          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>📍 {job.location || "Not specified"}</div>
-          <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>🏢 {job.companyName || job.employerEmail}</div>
-          {job.jobType && <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>💼 {job.jobType} {job.workMode ? `· ${job.workMode}` : ""}</div>}
-          {job.salary && <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>💰 {job.salary}</div>}
-        </div>
-      ))}
+      ) : saved.map((job, i) => {
+        const isExp = expanded === job._id;
+        return (
+          <div key={i} style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 14, marginBottom: 12, overflow: "hidden" }}>
+            {/* Header */}
+            <div style={{ padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: "#a78bfa", fontSize: 14, marginBottom: 4 }}>{job.jobTitle}</div>
+                <div style={{ fontSize: 12, color: "#6b7280" }}>📍 {job.location || "Not specified"}</div>
+                <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>🏢 {job.companyName || job.employerEmail}</div>
+                {(job.jobType || job.workMode) && <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>💼 {[job.jobType, job.workMode].filter(Boolean).join(" · ")}</div>}
+                {job.salary && <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>💰 {job.salary}</div>}
+              </div>
+              <div style={{ display: "flex", gap: 8, flexShrink: 0, marginLeft: 12 }}>
+                <button onClick={() => setExpanded(isExp ? null : job._id)} style={{ background: isExp ? "rgba(37,99,235,0.15)" : "#1e293b", color: isExp ? "#60a5fa" : "#94a3b8", border: `1px solid ${isExp ? "rgba(37,99,235,0.3)" : "#334155"}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>
+                  {isExp ? "▲ Hide" : "▼ Details"}
+                </button>
+                <button onClick={() => removeJob(job._id.toString())} disabled={removing === job._id.toString()} style={{ background: "rgba(239,68,68,0.1)", color: "#f87171", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer", opacity: removing === job._id.toString() ? 0.6 : 1 }}>
+                  {removing === job._id.toString() ? "..." : "✕ Remove"}
+                </button>
+              </div>
+            </div>
+
+            {/* Expanded detail */}
+            {isExp && (
+              <div style={{ borderTop: "1px solid #1f2937", background: "#0f172a", padding: "16px 20px" }}>
+                {/* Job Keywords */}
+                {(job.jobKeywords||[]).length > 0 && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 11, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>🔑 Keywords ({job.jobKeywords.length})</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, maxHeight: 70, overflowY: "auto" }}>
+                      {job.jobKeywords.map((kw, k) => <span key={k} style={{ background: "rgba(124,58,237,0.12)", color: "#a78bfa", fontSize: 11, padding: "2px 8px", borderRadius: 99 }}>{kw}</span>)}
+                    </div>
+                  </div>
+                )}
+                {/* Job Description */}
+                {job.jobDescription && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 11, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>📄 Job Description</div>
+                    <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7, whiteSpace: "pre-wrap", maxHeight: 120, overflowY: "auto" }}>{job.jobDescription}</div>
+                  </div>
+                )}
+                {/* Company & Benefits */}
+                {(job.companyDescription || job.benefits) && (
+                  <div>
+                    <div style={{ fontSize: 11, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>🏢 Company & Benefits</div>
+                    {job.companyDescription && <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7, marginBottom: 8 }}>{job.companyDescription}</div>}
+                    {job.benefits && <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7 }}>🎁 {job.benefits}</div>}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
