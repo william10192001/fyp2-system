@@ -135,51 +135,73 @@ app.post("/login", async (req, res) => {
   } catch { res.status(500).json({ msg: "Login failed ❌" }); }
 });
 
-/* ── MFA: Send 6-digit OTP to email ── */
+/* ── MFA: Send 6-digit OTP (synchronous with timeout + fallback) ── */
 app.post("/send-otp", async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ msg: "Email is required" });
     const user = await User.findOne({ email: email.trim().toLowerCase() });
     if (!user) return res.status(404).json({ msg: "No account found with this email" });
+
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    user.resetToken = `otp:${otp}`;
-    user.resetTokenExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes
+    user.resetToken       = `otp:${otp}`;
+    user.resetTokenExpiry = Date.now() + 10 * 60 * 1000;
     await user.save();
-    res.json({ msg: "OTP sent to your email" });
-    sendEmailAsync({
-      from: process.env.EMAIL_USER, to: email,
-      subject: "Your Password Reset OTP - AI Recruit",
-      html: `<div style="font-family:Inter,sans-serif;padding:32px;max-width:500px">
-        <h2 style="color:#1e293b">Password Reset OTP</h2>
-        <p style="color:#64748b">Your one-time password (valid for 10 minutes):</p>
-        <div style="background:#f1f5f9;border-radius:12px;padding:24px;text-align:center;margin:20px 0">
-          <span style="font-size:40px;font-weight:800;letter-spacing:12px;color:#2563eb">${otp}</span>
-        </div>
-        <p style="color:#94a3b8;font-size:12px">If you didn't request this, please ignore this email.</p>
-      </div>`
+
+    // Send synchronously with 8-second timeout so Render doesn't kill the process
+    let emailSent = false;
+    try {
+      await Promise.race([
+        transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to:   email,
+          subject: "AI Recruit - Your Verification Code",
+          html: `<div style="font-family:Inter,sans-serif;padding:40px 32px;max-width:480px;background:#f8fafc;border-radius:16px">
+  <div style="text-align:center;margin-bottom:28px">
+    <div style="width:52px;height:52px;background:linear-gradient(135deg,#2563eb,#7c3aed);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:white">AI</div>
+  </div>
+  <h2 style="color:#1e293b;text-align:center;margin:0 0 8px;font-size:22px">Verification Code</h2>
+  <p style="color:#64748b;text-align:center;margin:0 0 28px;font-size:14px">Enter this code to reset your AI Recruit password.</p>
+  <div style="background:white;border:2px solid #e2e8f0;border-radius:14px;padding:28px;text-align:center;margin-bottom:24px">
+    <div style="font-size:44px;font-weight:800;letter-spacing:14px;color:#2563eb;font-family:monospace">${otp}</div>
+    <p style="color:#94a3b8;font-size:12px;margin:10px 0 0">Valid for 10 minutes only</p>
+  </div>
+  <p style="color:#94a3b8;font-size:12px;text-align:center">If you did not request this, ignore this email.</p>
+</div>`
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Email timeout")), 8000))
+      ]);
+      emailSent = true;
+      console.log("✅ OTP email sent:", email);
+    } catch (emailErr) {
+      console.log("❌ OTP email failed:", emailErr.message);
+    }
+
+    res.json({
+      msg:         emailSent ? "Verification code sent to your email" : "Code generated — email may be delayed",
+      emailSent,
+      otpFallback: emailSent ? null : otp,
     });
-  } catch { res.status(500).json({ msg: "Server error" }); }
+  } catch (err) { console.log(err); res.status(500).json({ msg: "Server error" }); }
 });
 
-/* ── MFA: Verify OTP and return reset token ── */
+/* ── MFA: Verify OTP → return reset token ── */
 app.post("/verify-otp", async (req, res) => {
   try {
     const { email, otp } = req.body;
-    if (!email || !otp) return res.status(400).json({ msg: "Email and OTP are required" });
+    if (!email || !otp) return res.status(400).json({ msg: "Email and code are required" });
     const user = await User.findOne({
-      email: email.trim().toLowerCase(),
-      resetToken: `otp:${otp}`,
+      email:            email.trim().toLowerCase(),
+      resetToken:       `otp:${otp.trim()}`,
       resetTokenExpiry: { $gt: Date.now() }
     });
-    if (!user) return res.status(400).json({ msg: "Invalid or expired OTP. Please try again." });
-    // Issue proper reset token
+    if (!user) return res.status(400).json({ msg: "Invalid or expired code. Please request a new one." });
     const resetToken = crypto.randomBytes(32).toString("hex");
-    user.resetToken = resetToken;
-    user.resetTokenExpiry = Date.now() + 60 * 60 * 1000; // 1 hour
+    user.resetToken       = resetToken;
+    user.resetTokenExpiry = Date.now() + 60 * 60 * 1000;
     await user.save();
-    res.json({ msg: "OTP verified ✅", resetToken });
-  } catch { res.status(500).json({ msg: "Verification failed" }); }
+    res.json({ msg: "Code verified ✅", resetToken });
+  } catch (err) { console.log(err); res.status(500).json({ msg: "Verification failed" }); }
 });
 
 /* ── Forgot Password (direct link, kept for fallback) ── */

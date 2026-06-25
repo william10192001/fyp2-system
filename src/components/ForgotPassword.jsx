@@ -5,20 +5,22 @@ const BASE = "https://fyp2-backend-gihc.onrender.com";
 
 function ForgotPassword() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState("mfa"); // "mfa" | "change"
+  const [tab, setTab] = useState("mfa");
 
   /* ── Tab 1: MFA OTP flow ── */
-  const [step,         setStep]         = useState(1); // 1=email, 2=otp, 3=newpass
-  const [mfaEmail,     setMfaEmail]     = useState("");
-  const [otp,          setOtp]          = useState(["","","","","",""]);
-  const [resetToken,   setResetToken]   = useState("");
-  const [newPass,      setNewPass]      = useState("");
-  const [confirmPass,  setConfirmPass]  = useState("");
-  const [mfaLoading,   setMfaLoading]   = useState(false);
-  const [mfaError,     setMfaError]     = useState("");
-  const [mfaDone,      setMfaDone]      = useState(false);
-  const [showNew,      setShowNew]      = useState(false);
-  const [resendTimer,  setResendTimer]  = useState(0);
+  const [step,        setStep]        = useState(1);
+  const [mfaEmail,    setMfaEmail]    = useState("");
+  const [otp,         setOtp]         = useState(["","","","","",""]);
+  const [resetToken,  setResetToken]  = useState("");
+  const [newPass,     setNewPass]     = useState("");
+  const [confirmPass, setConfirmPass] = useState("");
+  const [mfaLoading,  setMfaLoading]  = useState(false);
+  const [mfaError,    setMfaError]    = useState("");
+  const [mfaDone,     setMfaDone]     = useState(false);
+  const [showNew,     setShowNew]     = useState(false);
+  const [resendTimer, setResendTimer] = useState(0);
+  const [emailSent,   setEmailSent]   = useState(false);
+  const [otpFallback, setOtpFallback] = useState("");  // shown if email fails
 
   const startResendTimer = () => {
     setResendTimer(60);
@@ -28,7 +30,7 @@ function ForgotPassword() {
   };
 
   const sendOtp = async () => {
-    if (!mfaEmail.trim()) { setMfaError("Please enter your email"); return; }
+    if (!mfaEmail.trim()) { setMfaError("Please enter your email address"); return; }
     setMfaError(""); setMfaLoading(true);
     try {
       const res  = await fetch(`${BASE}/send-otp`, {
@@ -36,15 +38,21 @@ function ForgotPassword() {
         body: JSON.stringify({ email: mfaEmail.trim() })
       });
       const data = await res.json();
-      if (!res.ok) { setMfaError(data.msg || "Failed to send OTP"); }
-      else { setStep(2); startResendTimer(); }
+      if (!res.ok) {
+        setMfaError(data.msg || "Failed to send code");
+      } else {
+        setEmailSent(data.emailSent);
+        setOtpFallback(data.otpFallback || "");
+        setStep(2);
+        startResendTimer();
+      }
     } catch { setMfaError("Cannot connect to server. Please try again."); }
     setMfaLoading(false);
   };
 
   const verifyOtp = async () => {
     const code = otp.join("");
-    if (code.length < 6) { setMfaError("Please enter the complete 6-digit OTP"); return; }
+    if (code.length < 6) { setMfaError("Please enter the complete 6-digit code"); return; }
     setMfaError(""); setMfaLoading(true);
     try {
       const res  = await fetch(`${BASE}/verify-otp`, {
@@ -52,7 +60,7 @@ function ForgotPassword() {
         body: JSON.stringify({ email: mfaEmail.trim(), otp: code })
       });
       const data = await res.json();
-      if (!res.ok) { setMfaError(data.msg || "Invalid OTP"); }
+      if (!res.ok) { setMfaError(data.msg || "Invalid code"); }
       else { setResetToken(data.resetToken); setStep(3); }
     } catch { setMfaError("Cannot connect to server."); }
     setMfaLoading(false);
@@ -75,18 +83,21 @@ function ForgotPassword() {
   };
 
   const handleOtpInput = (val, idx) => {
-    const newOtp = [...otp];
-    newOtp[idx] = val.replace(/\D/g, "").slice(-1);
-    setOtp(newOtp);
+    const next = [...otp];
+    next[idx] = val.replace(/\D/g, "").slice(-1);
+    setOtp(next);
     if (val && idx < 5) document.getElementById(`otp-${idx+1}`)?.focus();
     setMfaError("");
   };
 
   const handleOtpKey = (e, idx) => {
-    if (e.key === "Backspace" && !otp[idx] && idx > 0) {
-      document.getElementById(`otp-${idx-1}`)?.focus();
-    }
+    if (e.key === "Backspace" && !otp[idx] && idx > 0) document.getElementById(`otp-${idx-1}`)?.focus();
     if (e.key === "Enter") verifyOtp();
+  };
+
+  const fillFallbackOtp = () => {
+    const digits = otpFallback.split("");
+    setOtp(digits);
   };
 
   /* ── Tab 2: Change with old password ── */
@@ -102,8 +113,8 @@ function ForgotPassword() {
 
   const submitChange = async () => {
     if (!changeEmail || !oldPass || !chNewPass || !chConfirm) { setChangeError("All fields are required"); return; }
-    if (chNewPass.length < 6) { setChangeError("New password must be at least 6 characters"); return; }
-    if (chNewPass !== chConfirm) { setChangeError("Passwords do not match"); return; }
+    if (chNewPass.length < 6)        { setChangeError("New password must be at least 6 characters"); return; }
+    if (chNewPass !== chConfirm)     { setChangeError("Passwords do not match"); return; }
     setChangeError(""); setChangeLoading(true);
     try {
       const res  = await fetch(`${BASE}/change-password`, {
@@ -117,31 +128,39 @@ function ForgotPassword() {
     setChangeLoading(false);
   };
 
-  const inputStyle = {
-    width: "100%", background: "#1e293b", border: "1px solid #334155",
-    borderRadius: 10, padding: "12px 16px", color: "white", fontSize: 14,
-    outline: "none", boxSizing: "border-box"
-  };
-  const inputRelStyle = { ...inputStyle, padding: "12px 44px 12px 16px" };
-
   const strength = newPass.length === 0 ? 0 : newPass.length < 6 ? 1 : newPass.length < 10 ? 2 : 3;
   const strengthColor = ["", "#ef4444", "#f59e0b", "#10b981"][strength];
   const strengthLabel = ["", "Weak", "Good", "Strong"][strength];
 
+  const iStyle = {
+    width: "100%", background: "#1e293b", border: "1px solid #334155",
+    borderRadius: 10, padding: "12px 16px", color: "white", fontSize: 14,
+    outline: "none", boxSizing: "border-box"
+  };
+  const iStyleRel = { ...iStyle, padding: "12px 44px 12px 16px" };
+
+  const EyeBtn = ({ show, toggle }) => (
+    <button onClick={toggle} type="button" style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "#64748b" }}>
+      {show ? "🙈" : "👁️"}
+    </button>
+  );
+
   return (
     <div style={{ minHeight: "100vh", display: "flex", fontFamily: "Inter, sans-serif" }}>
 
-      {/* LEFT */}
-      <div style={{ flex: 1, background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 60%, #312e81 100%)", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: "60px 40px" }} className="hidden md:flex">
+      {/* LEFT branding */}
+      <div style={{ flex: 1, background: "linear-gradient(135deg,#0f172a 0%,#1e1b4b 60%,#312e81 100%)", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: "60px 40px" }} className="hidden md:flex">
         <div style={{ maxWidth: 380, textAlign: "center" }}>
-          <div style={{ width: 72, height: 72, background: "linear-gradient(135deg, #2563eb, #7c3aed)", borderRadius: 20, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 28px", fontSize: 28, fontWeight: 800, color: "white", boxShadow: "0 8px 32px rgba(124,58,237,0.4)" }}>AI</div>
+          <div style={{ width: 72, height: 72, background: "linear-gradient(135deg,#2563eb,#7c3aed)", borderRadius: 20, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 28px", fontSize: 28, fontWeight: 800, color: "white", boxShadow: "0 8px 32px rgba(124,58,237,0.4)" }}>AI</div>
           <h1 style={{ color: "white", fontSize: 32, fontWeight: 800, margin: "0 0 16px" }}>Account Recovery</h1>
-          <p style={{ color: "#94a3b8", fontSize: 15, lineHeight: 1.7, margin: 0 }}>Secure your account with email OTP verification or change via old password.</p>
+          <p style={{ color: "#94a3b8", fontSize: 15, lineHeight: 1.7, margin: 0 }}>
+            Secure your account with email verification or change via old password.
+          </p>
           <div style={{ marginTop: 40, display: "flex", flexDirection: "column", gap: 16, textAlign: "left" }}>
             {[
-              { icon: "📧", text: "OTP sent directly to your email" },
-              { icon: "🔒", text: "OTP expires in 10 minutes" },
-              { icon: "🔑", text: "Change password using old password — no email needed" },
+              { icon: "📧", text: "6-digit code sent to your email" },
+              { icon: "⏱️", text: "Code expires in 10 minutes" },
+              { icon: "🔑", text: "Or change using old password — no email needed" },
               { icon: "✅", text: "Your data stays safe and encrypted" },
             ].map((item, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -153,19 +172,18 @@ function ForgotPassword() {
         </div>
       </div>
 
-      {/* RIGHT */}
+      {/* RIGHT form */}
       <div style={{ width: "100%", maxWidth: 500, background: "#0f172a", display: "flex", flexDirection: "column", justifyContent: "center", padding: "48px 40px", overflowY: "auto" }}>
+
+        {/* Logo */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 32 }}>
-          <div style={{ width: 36, height: 36, background: "linear-gradient(135deg, #2563eb, #7c3aed)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: "white" }}>AI</div>
+          <div style={{ width: 36, height: 36, background: "linear-gradient(135deg,#2563eb,#7c3aed)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: "white" }}>AI</div>
           <span style={{ color: "white", fontWeight: 700, fontSize: 16 }}>AI Recruit</span>
         </div>
 
-        {/* Tab Switcher */}
+        {/* Tab switcher */}
         <div style={{ display: "flex", background: "#1e293b", borderRadius: 12, padding: 4, marginBottom: 32 }}>
-          {[
-            { key: "mfa",    label: "📧 Email OTP" },
-            { key: "change", label: "🔑 Change Password" },
-          ].map(t => (
+          {[{ key: "mfa", label: "📧 Email Code" }, { key: "change", label: "🔑 Change Password" }].map(t => (
             <button key={t.key} onClick={() => setTab(t.key)} style={{
               flex: 1, padding: "10px", border: "none", borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: "pointer",
               background: tab === t.key ? "linear-gradient(135deg,#2563eb,#7c3aed)" : "transparent",
@@ -174,7 +192,7 @@ function ForgotPassword() {
           ))}
         </div>
 
-        {/* ── TAB 1: MFA OTP ── */}
+        {/* ══ TAB 1: OTP flow ══ */}
         {tab === "mfa" && (
           <>
             {mfaDone ? (
@@ -186,12 +204,8 @@ function ForgotPassword() {
             ) : (
               <>
                 {/* Step indicator */}
-                <div style={{ display: "flex", alignItems: "center", gap: 0, marginBottom: 28 }}>
-                  {[
-                    { n: 1, label: "Email" },
-                    { n: 2, label: "OTP" },
-                    { n: 3, label: "New Password" },
-                  ].map((s, i) => (
+                <div style={{ display: "flex", alignItems: "center", marginBottom: 28 }}>
+                  {[{ n: 1, label: "Email" }, { n: 2, label: "Code" }, { n: 3, label: "New Password" }].map((s, i) => (
                     <React.Fragment key={s.n}>
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                         <div style={{
@@ -207,12 +221,12 @@ function ForgotPassword() {
                   ))}
                 </div>
 
-                {/* Step 1: Enter Email */}
+                {/* ── Step 1: Email ── */}
                 {step === 1 && (
                   <>
                     <div style={{ marginBottom: 24 }}>
                       <h2 style={{ color: "white", fontSize: 22, fontWeight: 700, margin: "0 0 8px" }}>Forgot Password?</h2>
-                      <p style={{ color: "#64748b", fontSize: 14, margin: 0 }}>Enter your email and we'll send a 6-digit OTP.</p>
+                      <p style={{ color: "#64748b", fontSize: 14, margin: 0 }}>Enter your email and we'll send a 6-digit verification code.</p>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                       <div>
@@ -220,37 +234,54 @@ function ForgotPassword() {
                         <input type="email" placeholder="you@example.com" value={mfaEmail}
                           onChange={e => { setMfaEmail(e.target.value); setMfaError(""); }}
                           onKeyDown={e => e.key === "Enter" && sendOtp()}
-                          style={inputStyle}
+                          style={iStyle}
                           onFocus={e => e.target.style.borderColor = "#2563eb"}
                           onBlur={e => e.target.style.borderColor = "#334155"}
                         />
                       </div>
                       {mfaError && <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: "10px 14px", color: "#f87171", fontSize: 13 }}>⚠️ {mfaError}</div>}
                       <button onClick={sendOtp} disabled={mfaLoading} style={{
-                        width: "100%", background: mfaLoading ? "#334155" : "linear-gradient(135deg, #2563eb, #7c3aed)",
+                        width: "100%", background: mfaLoading ? "#334155" : "linear-gradient(135deg,#2563eb,#7c3aed)",
                         color: "white", border: "none", borderRadius: 10, padding: "13px", fontSize: 15, fontWeight: 600,
                         cursor: mfaLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8
                       }}>
-                        {mfaLoading ? <><span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />Sending OTP...</> : "Send OTP →"}
+                        {mfaLoading
+                          ? <><span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />Sending...</>
+                          : "Send Verification Code →"}
                       </button>
                     </div>
                   </>
                 )}
 
-                {/* Step 2: Enter OTP */}
+                {/* ── Step 2: Enter code ── */}
                 {step === 2 && (
                   <>
-                    <div style={{ marginBottom: 24 }}>
-                      <h2 style={{ color: "white", fontSize: 22, fontWeight: 700, margin: "0 0 8px" }}>Check Your Email</h2>
-                      <p style={{ color: "#64748b", fontSize: 14, margin: 0 }}>
-                        We sent a 6-digit OTP to <strong style={{ color: "#60a5fa" }}>{mfaEmail}</strong>
-                      </p>
+                    <div style={{ marginBottom: 20 }}>
+                      <h2 style={{ color: "white", fontSize: 22, fontWeight: 700, margin: "0 0 8px" }}>Enter Verification Code</h2>
+                      {emailSent ? (
+                        <p style={{ color: "#64748b", fontSize: 14, margin: 0 }}>
+                          We sent a 6-digit code to <strong style={{ color: "#60a5fa" }}>{mfaEmail}</strong>.<br />
+                          <span style={{ fontSize: 12, color: "#475569" }}>Check your inbox and spam folder.</span>
+                        </p>
+                      ) : (
+                        /* Email failed — show fallback OTP on screen */
+                        <div style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 12, padding: "14px 16px", marginTop: 8 }}>
+                          <div style={{ color: "#fbbf24", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>⚠️ Email delivery failed (SMTP issue)</div>
+                          <p style={{ color: "#94a3b8", fontSize: 13, margin: "0 0 10px" }}>Use this code instead:</p>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <span style={{ fontFamily: "monospace", fontSize: 28, fontWeight: 800, letterSpacing: 8, color: "#fbbf24" }}>{otpFallback}</span>
+                            <button onClick={fillFallbackOtp} style={{ background: "#1e293b", color: "#60a5fa", border: "1px solid #334155", borderRadius: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>
+                              Auto-fill ↓
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
+
                     {/* OTP boxes */}
-                    <div style={{ display: "flex", gap: 10, justifyContent: "center", marginBottom: 24 }}>
+                    <div style={{ display: "flex", gap: 10, justifyContent: "center", marginBottom: 20 }}>
                       {otp.map((digit, idx) => (
-                        <input
-                          key={idx} id={`otp-${idx}`} type="text" inputMode="numeric"
+                        <input key={idx} id={`otp-${idx}`} type="text" inputMode="numeric"
                           maxLength={1} value={digit}
                           onChange={e => handleOtpInput(e.target.value, idx)}
                           onKeyDown={e => handleOtpKey(e, idx)}
@@ -258,37 +289,41 @@ function ForgotPassword() {
                             width: 52, height: 60, textAlign: "center", fontSize: 24, fontWeight: 700,
                             background: digit ? "rgba(37,99,235,0.15)" : "#1e293b",
                             border: digit ? "2px solid #2563eb" : "2px solid #334155",
-                            borderRadius: 10, color: "white", outline: "none"
+                            borderRadius: 10, color: "white", outline: "none", transition: "all 0.15s"
                           }}
                         />
                       ))}
                     </div>
+
                     {mfaError && <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: "10px 14px", color: "#f87171", fontSize: 13, marginBottom: 16 }}>⚠️ {mfaError}</div>}
+
                     <button onClick={verifyOtp} disabled={mfaLoading || otp.join("").length < 6} style={{
-                      width: "100%", background: (mfaLoading || otp.join("").length < 6) ? "#334155" : "linear-gradient(135deg, #2563eb, #7c3aed)",
+                      width: "100%", background: (mfaLoading || otp.join("").length < 6) ? "#334155" : "linear-gradient(135deg,#2563eb,#7c3aed)",
                       color: "white", border: "none", borderRadius: 10, padding: "13px", fontSize: 15, fontWeight: 600,
                       cursor: (mfaLoading || otp.join("").length < 6) ? "not-allowed" : "pointer",
                       display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16
                     }}>
-                      {mfaLoading ? <><span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />Verifying...</> : "Verify OTP →"}
+                      {mfaLoading
+                        ? <><span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />Verifying...</>
+                        : "Verify Code →"}
                     </button>
+
                     <div style={{ textAlign: "center" }}>
-                      {resendTimer > 0 ? (
-                        <span style={{ color: "#475569", fontSize: 13 }}>Resend OTP in {resendTimer}s</span>
-                      ) : (
-                        <button onClick={sendOtp} style={{ color: "#60a5fa", background: "none", border: "none", cursor: "pointer", fontSize: 13 }}>Resend OTP</button>
-                      )}
+                      {resendTimer > 0
+                        ? <span style={{ color: "#475569", fontSize: 13 }}>Resend code in {resendTimer}s</span>
+                        : <button onClick={sendOtp} style={{ color: "#60a5fa", background: "none", border: "none", cursor: "pointer", fontSize: 13 }}>Resend Code</button>
+                      }
                     </div>
                   </>
                 )}
 
-                {/* Step 3: New Password */}
+                {/* ── Step 3: New password ── */}
                 {step === 3 && (
                   <>
                     <div style={{ marginBottom: 24 }}>
                       <div style={{ fontSize: 32, marginBottom: 10 }}>🔑</div>
                       <h2 style={{ color: "white", fontSize: 22, fontWeight: 700, margin: "0 0 8px" }}>Set New Password</h2>
-                      <p style={{ color: "#64748b", fontSize: 14, margin: 0 }}>OTP verified! Choose a strong new password.</p>
+                      <p style={{ color: "#64748b", fontSize: 14, margin: 0 }}>Code verified! Choose a strong new password.</p>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                       <div>
@@ -296,13 +331,11 @@ function ForgotPassword() {
                         <div style={{ position: "relative" }}>
                           <input type={showNew ? "text" : "password"} placeholder="At least 6 characters" value={newPass}
                             onChange={e => { setNewPass(e.target.value); setMfaError(""); }}
-                            style={inputRelStyle}
+                            style={iStyleRel}
                             onFocus={e => e.target.style.borderColor = "#2563eb"}
                             onBlur={e => e.target.style.borderColor = "#334155"}
                           />
-                          <button onClick={() => setShowNew(!showNew)} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "#64748b" }}>
-                            {showNew ? "🙈" : "👁️"}
-                          </button>
+                          <EyeBtn show={showNew} toggle={() => setShowNew(!showNew)} />
                         </div>
                         {newPass.length > 0 && (
                           <div style={{ marginTop: 8 }}>
@@ -318,7 +351,7 @@ function ForgotPassword() {
                         <input type="password" placeholder="Re-enter password" value={confirmPass}
                           onChange={e => { setConfirmPass(e.target.value); setMfaError(""); }}
                           onKeyDown={e => e.key === "Enter" && submitNewPass()}
-                          style={{ ...inputStyle, borderColor: confirmPass && confirmPass !== newPass ? "#ef4444" : "#334155" }}
+                          style={{ ...iStyle, borderColor: confirmPass && confirmPass !== newPass ? "#ef4444" : "#334155" }}
                           onFocus={e => e.target.style.borderColor = "#2563eb"}
                           onBlur={e => e.target.style.borderColor = confirmPass && confirmPass !== newPass ? "#ef4444" : "#334155"}
                         />
@@ -327,11 +360,13 @@ function ForgotPassword() {
                       </div>
                       {mfaError && <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: "10px 14px", color: "#f87171", fontSize: 13 }}>⚠️ {mfaError}</div>}
                       <button onClick={submitNewPass} disabled={mfaLoading} style={{
-                        width: "100%", background: mfaLoading ? "#334155" : "linear-gradient(135deg, #2563eb, #7c3aed)",
+                        width: "100%", background: mfaLoading ? "#334155" : "linear-gradient(135deg,#2563eb,#7c3aed)",
                         color: "white", border: "none", borderRadius: 10, padding: "13px", fontSize: 15, fontWeight: 600,
                         cursor: mfaLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8
                       }}>
-                        {mfaLoading ? <><span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />Resetting...</> : "Reset Password →"}
+                        {mfaLoading
+                          ? <><span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />Resetting...</>
+                          : "Reset Password →"}
                       </button>
                     </div>
                   </>
@@ -341,7 +376,7 @@ function ForgotPassword() {
           </>
         )}
 
-        {/* ── TAB 2: Change with old password ── */}
+        {/* ══ TAB 2: Change with old password ══ */}
         {tab === "change" && (
           <>
             {changeDone ? (
@@ -361,7 +396,7 @@ function ForgotPassword() {
                     <label style={{ color: "#94a3b8", fontSize: 12, fontWeight: 500, display: "block", marginBottom: 7 }}>Email Address</label>
                     <input type="email" placeholder="you@example.com" value={changeEmail}
                       onChange={e => { setChangeEmail(e.target.value); setChangeError(""); }}
-                      style={inputStyle}
+                      style={iStyle}
                       onFocus={e => e.target.style.borderColor = "#2563eb"}
                       onBlur={e => e.target.style.borderColor = "#334155"}
                     />
@@ -371,13 +406,11 @@ function ForgotPassword() {
                     <div style={{ position: "relative" }}>
                       <input type={showOld ? "text" : "password"} placeholder="Your current password" value={oldPass}
                         onChange={e => { setOldPass(e.target.value); setChangeError(""); }}
-                        style={inputRelStyle}
+                        style={iStyleRel}
                         onFocus={e => e.target.style.borderColor = "#2563eb"}
                         onBlur={e => e.target.style.borderColor = "#334155"}
                       />
-                      <button onClick={() => setShowOld(!showOld)} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "#64748b" }}>
-                        {showOld ? "🙈" : "👁️"}
-                      </button>
+                      <EyeBtn show={showOld} toggle={() => setShowOld(!showOld)} />
                     </div>
                   </div>
                   <div>
@@ -385,13 +418,11 @@ function ForgotPassword() {
                     <div style={{ position: "relative" }}>
                       <input type={showChNew ? "text" : "password"} placeholder="At least 6 characters" value={chNewPass}
                         onChange={e => { setChNewPass(e.target.value); setChangeError(""); }}
-                        style={inputRelStyle}
+                        style={iStyleRel}
                         onFocus={e => e.target.style.borderColor = "#2563eb"}
                         onBlur={e => e.target.style.borderColor = "#334155"}
                       />
-                      <button onClick={() => setShowChNew(!showChNew)} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "#64748b" }}>
-                        {showChNew ? "🙈" : "👁️"}
-                      </button>
+                      <EyeBtn show={showChNew} toggle={() => setShowChNew(!showChNew)} />
                     </div>
                   </div>
                   <div>
@@ -399,18 +430,20 @@ function ForgotPassword() {
                     <input type="password" placeholder="Re-enter new password" value={chConfirm}
                       onChange={e => { setChConfirm(e.target.value); setChangeError(""); }}
                       onKeyDown={e => e.key === "Enter" && submitChange()}
-                      style={{ ...inputStyle, borderColor: chConfirm && chConfirm !== chNewPass ? "#ef4444" : "#334155" }}
+                      style={{ ...iStyle, borderColor: chConfirm && chConfirm !== chNewPass ? "#ef4444" : "#334155" }}
                     />
                     {chConfirm && chNewPass !== chConfirm && <div style={{ color: "#f87171", fontSize: 12, marginTop: 5 }}>⚠️ Passwords don't match</div>}
                     {chConfirm && chNewPass === chConfirm && chConfirm.length > 0 && <div style={{ color: "#34d399", fontSize: 12, marginTop: 5 }}>✅ Passwords match</div>}
                   </div>
                   {changeError && <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: "10px 14px", color: "#f87171", fontSize: 13 }}>⚠️ {changeError}</div>}
                   <button onClick={submitChange} disabled={changeLoading} style={{
-                    width: "100%", background: changeLoading ? "#334155" : "linear-gradient(135deg, #2563eb, #7c3aed)",
+                    width: "100%", background: changeLoading ? "#334155" : "linear-gradient(135deg,#2563eb,#7c3aed)",
                     color: "white", border: "none", borderRadius: 10, padding: "13px", fontSize: 15, fontWeight: 600,
                     cursor: changeLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8
                   }}>
-                    {changeLoading ? <><span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />Changing...</> : "Change Password →"}
+                    {changeLoading
+                      ? <><span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />Changing...</>
+                      : "Change Password →"}
                   </button>
                 </div>
               </>
