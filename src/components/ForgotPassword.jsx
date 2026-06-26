@@ -19,8 +19,6 @@ function ForgotPassword() {
   const [mfaDone,     setMfaDone]     = useState(false);
   const [showNew,     setShowNew]     = useState(false);
   const [resendTimer, setResendTimer] = useState(0);
-  const [emailSent,   setEmailSent]   = useState(false);
-  const [otpFallback, setOtpFallback] = useState("");  // shown if email fails
 
   const startResendTimer = () => {
     setResendTimer(60);
@@ -41,8 +39,6 @@ function ForgotPassword() {
       if (!res.ok) {
         setMfaError(data.msg || "Failed to send code");
       } else {
-        setEmailSent(data.emailSent);
-        setOtpFallback(data.otpFallback || "");
         setStep(2);
         startResendTimer();
       }
@@ -60,7 +56,7 @@ function ForgotPassword() {
         body: JSON.stringify({ email: mfaEmail.trim(), otp: code })
       });
       const data = await res.json();
-      if (!res.ok) { setMfaError(data.msg || "Invalid code"); }
+      if (!res.ok) { setMfaError(data.msg || "Invalid or expired code. Please request a new one."); }
       else { setResetToken(data.resetToken); setStep(3); }
     } catch { setMfaError("Cannot connect to server."); }
     setMfaLoading(false);
@@ -95,11 +91,6 @@ function ForgotPassword() {
     if (e.key === "Enter") verifyOtp();
   };
 
-  const fillFallbackOtp = () => {
-    const digits = otpFallback.split("");
-    setOtp(digits);
-  };
-
   /* ── Tab 2: Change with old password ── */
   const [changeEmail,   setChangeEmail]   = useState("");
   const [oldPass,       setOldPass]       = useState("");
@@ -113,8 +104,8 @@ function ForgotPassword() {
 
   const submitChange = async () => {
     if (!changeEmail || !oldPass || !chNewPass || !chConfirm) { setChangeError("All fields are required"); return; }
-    if (chNewPass.length < 6)        { setChangeError("New password must be at least 6 characters"); return; }
-    if (chNewPass !== chConfirm)     { setChangeError("Passwords do not match"); return; }
+    if (chNewPass.length < 6)    { setChangeError("New password must be at least 6 characters"); return; }
+    if (chNewPass !== chConfirm) { setChangeError("Passwords do not match"); return; }
     setChangeError(""); setChangeLoading(true);
     try {
       const res  = await fetch(`${BASE}/change-password`, {
@@ -143,6 +134,10 @@ function ForgotPassword() {
     <button onClick={toggle} type="button" style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "#64748b" }}>
       {show ? "🙈" : "👁️"}
     </button>
+  );
+
+  const Spinner = () => (
+    <span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />
   );
 
   return (
@@ -175,7 +170,6 @@ function ForgotPassword() {
       {/* RIGHT form */}
       <div style={{ width: "100%", maxWidth: 500, background: "#0f172a", display: "flex", flexDirection: "column", justifyContent: "center", padding: "48px 40px", overflowY: "auto" }}>
 
-        {/* Logo */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 32 }}>
           <div style={{ width: 36, height: 36, background: "linear-gradient(135deg,#2563eb,#7c3aed)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: "white" }}>AI</div>
           <span style={{ color: "white", fontWeight: 700, fontSize: 16 }}>AI Recruit</span>
@@ -192,7 +186,7 @@ function ForgotPassword() {
           ))}
         </div>
 
-        {/* ══ TAB 1: OTP flow ══ */}
+        {/* ══ TAB 1: OTP ══ */}
         {tab === "mfa" && (
           <>
             {mfaDone ? (
@@ -221,7 +215,7 @@ function ForgotPassword() {
                   ))}
                 </div>
 
-                {/* ── Step 1: Email ── */}
+                {/* Step 1: Email */}
                 {step === 1 && (
                   <>
                     <div style={{ marginBottom: 24 }}>
@@ -245,37 +239,28 @@ function ForgotPassword() {
                         color: "white", border: "none", borderRadius: 10, padding: "13px", fontSize: 15, fontWeight: 600,
                         cursor: mfaLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8
                       }}>
-                        {mfaLoading
-                          ? <><span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />Sending...</>
-                          : "Send Verification Code →"}
+                        {mfaLoading ? <><Spinner />Sending...</> : "Send Verification Code →"}
                       </button>
                     </div>
                   </>
                 )}
 
-                {/* ── Step 2: Enter code ── */}
+                {/* Step 2: Enter OTP */}
                 {step === 2 && (
                   <>
                     <div style={{ marginBottom: 20 }}>
-                      <h2 style={{ color: "white", fontSize: 22, fontWeight: 700, margin: "0 0 8px" }}>Enter Verification Code</h2>
-                      {emailSent ? (
-                        <p style={{ color: "#64748b", fontSize: 14, margin: 0 }}>
-                          We sent a 6-digit code to <strong style={{ color: "#60a5fa" }}>{mfaEmail}</strong>.<br />
-                          <span style={{ fontSize: 12, color: "#475569" }}>Check your inbox and spam folder.</span>
-                        </p>
-                      ) : (
-                        /* Email failed — show fallback OTP on screen */
-                        <div style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 12, padding: "14px 16px", marginTop: 8 }}>
-                          <div style={{ color: "#fbbf24", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>⚠️ Email delivery failed (SMTP issue)</div>
-                          <p style={{ color: "#94a3b8", fontSize: 13, margin: "0 0 10px" }}>Use this code instead:</p>
-                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                            <span style={{ fontFamily: "monospace", fontSize: 28, fontWeight: 800, letterSpacing: 8, color: "#fbbf24" }}>{otpFallback}</span>
-                            <button onClick={fillFallbackOtp} style={{ background: "#1e293b", color: "#60a5fa", border: "1px solid #334155", borderRadius: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>
-                              Auto-fill ↓
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                      <h2 style={{ color: "white", fontSize: 22, fontWeight: 700, margin: "0 0 8px" }}>Check Your Email</h2>
+                      <p style={{ color: "#64748b", fontSize: 14, margin: 0 }}>
+                        We sent a 6-digit code to <strong style={{ color: "#60a5fa" }}>{mfaEmail}</strong>
+                      </p>
+                      <p style={{ color: "#475569", fontSize: 12, margin: "6px 0 0" }}>
+                        Check your inbox and spam folder. Code expires in 10 minutes.
+                      </p>
+                    </div>
+
+                    {/* Info box */}
+                    <div style={{ background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.2)", borderRadius: 10, padding: "12px 14px", marginBottom: 20, fontSize: 12, color: "#94a3b8" }}>
+                      💡 Didn't receive the code? Check spam folder, then click <strong style={{ color: "#60a5fa" }}>Resend</strong>. If email still doesn't arrive, use the <strong style={{ color: "#60a5fa" }}>🔑 Change Password</strong> tab instead.
                     </div>
 
                     {/* OTP boxes */}
@@ -303,9 +288,7 @@ function ForgotPassword() {
                       cursor: (mfaLoading || otp.join("").length < 6) ? "not-allowed" : "pointer",
                       display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16
                     }}>
-                      {mfaLoading
-                        ? <><span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />Verifying...</>
-                        : "Verify Code →"}
+                      {mfaLoading ? <><Spinner />Verifying...</> : "Verify Code →"}
                     </button>
 
                     <div style={{ textAlign: "center" }}>
@@ -317,7 +300,7 @@ function ForgotPassword() {
                   </>
                 )}
 
-                {/* ── Step 3: New password ── */}
+                {/* Step 3: New password */}
                 {step === 3 && (
                   <>
                     <div style={{ marginBottom: 24 }}>
@@ -364,9 +347,7 @@ function ForgotPassword() {
                         color: "white", border: "none", borderRadius: 10, padding: "13px", fontSize: 15, fontWeight: 600,
                         cursor: mfaLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8
                       }}>
-                        {mfaLoading
-                          ? <><span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />Resetting...</>
-                          : "Reset Password →"}
+                        {mfaLoading ? <><Spinner />Resetting...</> : "Reset Password →"}
                       </button>
                     </div>
                   </>
@@ -441,9 +422,7 @@ function ForgotPassword() {
                     color: "white", border: "none", borderRadius: 10, padding: "13px", fontSize: 15, fontWeight: 600,
                     cursor: changeLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8
                   }}>
-                    {changeLoading
-                      ? <><span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />Changing...</>
-                      : "Change Password →"}
+                    {changeLoading ? <><Spinner />Changing...</> : "Change Password →"}
                   </button>
                 </div>
               </>
