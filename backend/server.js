@@ -7,16 +7,18 @@ const mongoose   = require("mongoose");
 const bcrypt     = require("bcryptjs");
 const jwt        = require("jsonwebtoken");
 const crypto     = require("crypto");
-const nodemailer = require("nodemailer");
 const natural    = require("natural");
 const multer     = require("multer");
 const pdf        = require("pdf-parse");
+const { Resend } = require("resend");
 
 const User        = require("./models/User");
 const Job         = require("./models/Job");
 const Application = require("./models/Application");
 
-const app = express();
+const app    = express();
+const resend = new Resend(process.env.RESEND_API_KEY);
+
 app.use(cors());
 app.use(express.json());
 const upload = multer({ storage: multer.memoryStorage() });
@@ -25,16 +27,20 @@ mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 5000 })
   .then(() => console.log("MongoDB Connected ✅"))
   .catch(err => console.log("MongoDB Error:", err));
 
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com", port: 587, secure: false,
-  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-  tls: { rejectUnauthorized: false }
-});
-
-function sendEmailAsync(opts) {
-  transporter.sendMail(opts)
-    .then(i => console.log("✅ Email:", i.messageId))
-    .catch(e => console.log("❌ Email failed:", e.message));
+/* ── Unified email sender via Resend HTTP API (no SMTP, works on Render free) ── */
+async function sendEmailAsync({ to, subject, html }) {
+  try {
+    const { data, error } = await resend.emails.send({
+      from:    "AI Recruit <onboarding@resend.dev>",
+      to:      [to],
+      subject,
+      html,
+    });
+    if (error) { console.log("❌ Resend error:", error); }
+    else        { console.log("✅ Email sent:", data.id); }
+  } catch (e) {
+    console.log("❌ Email failed:", e.message);
+  }
 }
 
 /* ── Deterministic keyword scorer ── */
@@ -54,48 +60,38 @@ function calcScore(resumeKeywords = [], jobKeywords = [], experienceYears = 0, r
   return { finalScore: Math.round(keywordScore * 0.8 + experienceScore * 0.2), matched };
 }
 
-/* ════ IMPROVED NLP KEYWORD EXTRACTOR ════
-   Filters: stopwords + proper names + noise
-*/
+/* ════ NLP KEYWORD EXTRACTOR ════ */
 const STOPWORDS = new Set([
   "the","and","is","in","to","of","for","on","with","a","an","or","by","at","from",
   "that","this","are","was","been","have","has","had","its","they","their","our","your",
   "can","will","may","also","all","but","not","we","you","he","she","it","be","do",
   "did","get","use","used","using","etc","as","per","each","about","into","than","more",
   "any","some","other","which","when","then","were","his","her","him","my","me","am",
-  "us","up","if","so","no","very","just","such","was","been","would","could","should",
-  "shall","being","having","while","where","who","what","how","why","both","few","many",
-  "own","same","than","too","very","just","now","here","there","then","once",
+  "us","up","if","so","no","very","just","such","would","could","should","shall",
+  "being","having","while","where","who","what","how","why","both","few","many",
+  "own","same","too","now","here","there","once",
 ]);
 
-// Proper names & noise — common Malaysian Chinese/Malay names, school words, email noise
 const PROPER_NAMES = new Set([
-  // Chinese surnames & given names common in Malaysia
   "liew","yong","zheng","wei","hui","ming","chen","wee","tan","lee","ng","lim","ong",
   "koh","chan","wong","teo","goh","chong","yap","khoo","kong","chew","kwan","low",
   "poh","sim","siew","soong","tiong","ting","yeoh","yew","yeap","han","jun","xin",
-  "zhi","jia","kai","hao","ling","qian","rui","xuan","yang","goh","lau","loh","mah",
-  "quah","saw","seah","teoh","tsai","chia","chin","chiam","chiam","fong","foong",
-  "khaw","kua","kuah","kuek","kwek","kwong","leong","leow","liow","looi","loong",
-  "loo","lor","ooi","pang","phang","phoon","pow","pua","quek","soo","soon","sua",
-  "suan","tay","teh","thong","toh","tong","tsang","tse","voon","wee","yam","yeap",
-  // Malay names & common words in names
+  "zhi","jia","kai","hao","ling","qian","rui","xuan","yang","lau","loh","mah",
+  "quah","saw","seah","teoh","tsai","chia","chin","fong","foong","khaw","kua","kuah",
+  "kwek","kwong","leong","leow","liow","looi","loong","loo","ooi","pang","phang",
+  "phoon","pua","quek","soo","soon","tay","teh","thong","toh","tong","voon","yam",
   "siti","ahmad","mohd","bin","binti","ali","hassan","hussin","razak","aziz","rahman",
-  "rahim","karim","malek","jalil","jamil","jamali","azman","azlan","azmi","azri","nur",
-  "nurul","noor","hakim","hakimah","amirul","amirah","faris","farhan","farhana","hafiz",
-  "hafizi","haziq","izzati","ainul","aishah","aisha","zulaikha","fatimah","farah",
-  "faizal","faiz","fadzilah","ismail","ibrahim","idris","ilham","irfan","ishak",
-  // Malaysian school/institution noise
+  "rahim","karim","malek","jalil","jamil","azman","azlan","azmi","azri","nur","nurul",
+  "noor","hakim","amirul","amirah","faris","farhan","farhana","hafiz","hafizi","haziq",
+  "izzati","ainul","aishah","zulaikha","fatimah","farah","faizal","faiz","ismail",
+  "ibrahim","idris","ilham","irfan","ishak",
   "seri","jubli","emas","perak","selangor","penang","johor","sabah","sarawak","mara",
   "uitm","utm","upm","ukm","usm","utem","unimap","uniten","iium","tarc","sunway",
   "inti","limkokwing","taylors","monash","curtin","mmu","cyberjaya","multimedia",
-  // Dates & months
   "jan","feb","mar","apr","jun","jul","aug","sep","oct","nov","dec",
   "january","february","march","april","june","july","august","september",
   "october","november","december",
-  // Email noise
   "gmail","yahoo","hotmail","outlook","com","edu","org","net","gov","my","co",
-  // Misc resume noise
   "cgpa","gpa","muet","spm","stpm","ptr","ref",
 ]);
 
@@ -104,12 +100,9 @@ function extractKeywords(text) {
   const tokenizer = new natural.WordTokenizer();
   const words = tokenizer.tokenize(text.toLowerCase());
   return [...new Set(words.filter(w =>
-    !STOPWORDS.has(w) &&
-    !PROPER_NAMES.has(w) &&
-    w.length > 2 &&
-    w.length < 25 &&
-    !/^\d+$/.test(w) &&
-    /^[a-zA-Z+#.]+$/.test(w)
+    !STOPWORDS.has(w) && !PROPER_NAMES.has(w) &&
+    w.length > 2 && w.length < 25 &&
+    !/^\d+$/.test(w) && /^[a-zA-Z+#.]+$/.test(w)
   ))];
 }
 
@@ -135,7 +128,7 @@ app.post("/login", async (req, res) => {
   } catch { res.status(500).json({ msg: "Login failed ❌" }); }
 });
 
-/* ── MFA: Send 6-digit OTP — async fire-and-forget (same as working status emails) ── */
+/* ── MFA: Send 6-digit OTP via Resend HTTP API ── */
 app.post("/send-otp", async (req, res) => {
   try {
     const { email } = req.body;
@@ -145,16 +138,14 @@ app.post("/send-otp", async (req, res) => {
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     user.resetToken       = `otp:${otp}`;
-    user.resetTokenExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes
+    user.resetTokenExpiry = Date.now() + 10 * 60 * 1000;
     await user.save();
 
-    // Respond immediately — email sent async (same pattern as working status emails)
+    // Respond immediately, send email async via Resend HTTP (not SMTP)
     res.json({ msg: "Verification code sent to your email" });
 
-    // Fire and forget — does NOT expose OTP if this fails
-    transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to:   email,
+    sendEmailAsync({
+      to:      email,
       subject: "AI Recruit - Your Verification Code",
       html: `<div style="font-family:Inter,sans-serif;padding:40px 32px;max-width:480px;background:#f8fafc;border-radius:16px">
   <div style="text-align:center;margin-bottom:28px">
@@ -168,9 +159,7 @@ app.post("/send-otp", async (req, res) => {
   </div>
   <p style="color:#94a3b8;font-size:12px;text-align:center">If you did not request this, please ignore this email.</p>
 </div>`
-    }).then(info => console.log("✅ OTP email sent:", info.messageId))
-      .catch(err  => console.log("❌ OTP email failed:", err.message));
-
+    });
   } catch (err) { console.log(err); res.status(500).json({ msg: "Server error" }); }
 });
 
@@ -191,23 +180,6 @@ app.post("/verify-otp", async (req, res) => {
     await user.save();
     res.json({ msg: "Code verified ✅", resetToken });
   } catch (err) { console.log(err); res.status(500).json({ msg: "Verification failed" }); }
-});
-
-/* ── Forgot Password (direct link, kept for fallback) ── */
-app.post("/forgot-password", async (req, res) => {
-  try {
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ msg: "Email is required" });
-    const user = await User.findOne({ email: email.trim().toLowerCase() });
-    if (!user) return res.status(404).json({ msg: "No account found with this email" });
-    const token = crypto.randomBytes(32).toString("hex");
-    user.resetToken = token; user.resetTokenExpiry = Date.now() + 3600000;
-    await user.save();
-    const resetLink = `${process.env.FRONTEND_URL || "https://fyp2-frontend.onrender.com"}/reset/${token}`;
-    res.json({ msg: "Reset link ready", resetLink, success: true });
-    sendEmailAsync({ from: process.env.EMAIL_USER, to: email, subject: "Reset Password - AI Recruit",
-      html: `<p>Click to reset: <a href="${resetLink}">${resetLink}</a>. Expires in 1 hour.</p>` });
-  } catch { res.status(500).json({ msg: "Server error" }); }
 });
 
 app.post("/reset-password/:token", async (req, res) => {
@@ -311,7 +283,6 @@ app.delete("/job/:id", async (req, res) => {
   catch { res.status(500).json({ msg: "Delete failed ❌" }); }
 });
 
-/* ── Smart PDF extraction with AI auto-fill for employer ── */
 app.post("/upload-job-pdf", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ msg: "No file uploaded" });
@@ -319,27 +290,12 @@ app.post("/upload-job-pdf", upload.single("file"), async (req, res) => {
     const text = data.text || "";
     if (text.trim().length < 10) return res.status(400).json({ msg: "PDF has no readable text ❌" });
     const keywords = extractKeywords(text);
-
-    // Use Groq to extract structured job fields
     const prompt = `Extract job information from this text. Return ONLY valid JSON, no extra text.
 Fields (use empty string "" if not found):
-{
-  "jobTitle": "",
-  "companyName": "",
-  "location": "",
-  "salary": "",
-  "jobType": "",
-  "workMode": "",
-  "companyDescription": "",
-  "benefits": "",
-  "jobDescription": ""
-}
+{"jobTitle":"","companyName":"","location":"","salary":"","jobType":"","workMode":"","companyDescription":"","benefits":"","jobDescription":""}
 jobType must be one of: Full-time, Part-time, Internship, Contract, Freelance, or ""
 workMode must be one of: On-site, Remote, Hybrid, or ""
-
-TEXT:
-${text.substring(0, 3000)}`;
-
+TEXT:\n${text.substring(0, 3000)}`;
     let extracted = {};
     try {
       const aiRes = await groq.chat.completions.create({
@@ -349,25 +305,14 @@ ${text.substring(0, 3000)}`;
       });
       const raw = aiRes.choices[0].message.content.trim().replace(/```json|```/g, "").trim();
       extracted = JSON.parse(raw);
-    } catch (e) {
-      console.log("AI extraction failed, using raw text:", e.message);
-    }
-
+    } catch (e) { console.log("AI extraction failed:", e.message); }
     res.json({
-      msg: "PDF processed ✅",
-      text: text.substring(0, 5000),
-      keywords,
-      totalKeywords: keywords.length,
-      // AI-extracted structured fields
-      jobTitle:           extracted.jobTitle           || "",
-      companyName:        extracted.companyName        || "",
-      location:           extracted.location           || "",
-      salary:             extracted.salary             || "",
-      jobType:            extracted.jobType            || "",
-      workMode:           extracted.workMode           || "",
-      companyDescription: extracted.companyDescription || "",
-      benefits:           extracted.benefits           || "",
-      jobDescription:     extracted.jobDescription     || text.substring(0, 2000),
+      msg: "PDF processed ✅", text: text.substring(0, 5000), keywords, totalKeywords: keywords.length,
+      jobTitle: extracted.jobTitle||"", companyName: extracted.companyName||"",
+      location: extracted.location||"", salary: extracted.salary||"",
+      jobType: extracted.jobType||"", workMode: extracted.workMode||"",
+      companyDescription: extracted.companyDescription||"", benefits: extracted.benefits||"",
+      jobDescription: extracted.jobDescription || text.substring(0, 2000),
     });
   } catch (err) { console.log(err); res.status(500).json({ msg: "Upload failed ❌" }); }
 });
@@ -406,7 +351,7 @@ app.post("/analyze-job-match", async (req, res) => {
     const candidate = await User.findOne({ email: candidateEmail });
     const job       = await Job.findById(jobId);
     if (!candidate || !job) return res.status(404).json({ msg: "Not found" });
-    if (!candidate.resumeText && !candidate.skills && (!candidate.resumeKeywords || candidate.resumeKeywords.length === 0)) {
+    if (!candidate.resumeText && (!candidate.resumeKeywords || candidate.resumeKeywords.length === 0)) {
       return res.json({ score: 0, matchedSkills: [], missingSkills: (job.jobKeywords||[]).slice(0,6), summary: "No resume uploaded yet.", recommendation: "Weak Match" });
     }
     const { finalScore, matched } = calcScore(candidate.resumeKeywords, job.jobKeywords, candidate.experienceYears, job.requiredExperience);
@@ -416,7 +361,7 @@ app.post("/analyze-job-match", async (req, res) => {
 JOB KEYWORDS: ${(job.jobKeywords||[]).join(", ")}
 CANDIDATE RESUME KEYWORDS: ${(candidate.resumeKeywords||[]).slice(0,30).join(", ")}
 KEYWORD MATCH SCORE: ${finalScore}% (${matched.length} of ${(job.jobKeywords||[]).length} job keywords matched)
-Return ONLY JSON: {"summary":"<1-2 sentences explaining the ${finalScore}% match based on these specific keywords>"}`;
+Return ONLY JSON: {"summary":"<1-2 sentences explaining the ${finalScore}% match>"}`;
     try {
       const aiRes = await groq.chat.completions.create({ model: "llama-3.3-70b-versatile", messages: [{ role: "user", content: prompt }], max_tokens: 150, temperature: 0.3 });
       const parsed = JSON.parse(aiRes.choices[0].message.content.trim().replace(/```json|```/g, "").trim());
@@ -443,8 +388,10 @@ app.post("/apply", async (req, res) => {
     }
     const { finalScore, matched } = calcScore(candidate.resumeKeywords, job.jobKeywords, candidate.experienceYears, job.requiredExperience);
     await new Application({ jobId, jobTitle: job.jobTitle, candidateEmail, candidateName: candidate.name||candidateEmail, employerEmail: job.employerEmail, matchScore: finalScore, matchedKeywords: matched.slice(0,10) }).save();
-    sendEmailAsync({ from: process.env.EMAIL_USER, to: job.employerEmail, subject: `New Application: ${job.jobTitle}`,
-      html: `<p><strong>${candidate.name||candidateEmail}</strong> applied for <strong>${job.jobTitle}</strong>. Match: <strong>${finalScore}%</strong></p>` });
+    sendEmailAsync({
+      to: job.employerEmail, subject: `New Application: ${job.jobTitle}`,
+      html: `<p><strong>${candidate.name||candidateEmail}</strong> applied for <strong>${job.jobTitle}</strong>. Match: <strong>${finalScore}%</strong></p>`
+    });
     res.json({ msg: "Applied successfully ✅", jobTitle: job.jobTitle });
   } catch (err) { console.log(err); res.status(500).json({ msg: "Apply failed ❌" }); }
 });
@@ -471,8 +418,10 @@ app.put("/application/:id/status", async (req, res) => {
     const app = await Application.findByIdAndUpdate(req.params.id, { status }, { new: true });
     if (!app) return res.status(404).json({ msg: "Application not found" });
     const statusLabel = status === "accepted" ? "Accepted for Future Process" : status === "rejected" ? "Rejected" : "Under Review";
-    sendEmailAsync({ from: process.env.EMAIL_USER, to: app.candidateEmail, subject: `Application Update: ${app.jobTitle}`,
-      html: `<p>Your application for <strong>${app.jobTitle}</strong>: <strong>${statusLabel}</strong>.</p>${status==="rejected"?"<p>You may re-apply from Job Matches.</p>":""}` });
+    sendEmailAsync({
+      to: app.candidateEmail, subject: `Application Update: ${app.jobTitle}`,
+      html: `<p>Your application for <strong>${app.jobTitle}</strong>: <strong>${statusLabel}</strong>.</p>${status==="rejected"?"<p>You may re-apply from Job Matches.</p>":""}`
+    });
     res.json({ msg: "Status updated ✅", app });
   } catch { res.status(500).json({ msg: "Update failed ❌" }); }
 });
