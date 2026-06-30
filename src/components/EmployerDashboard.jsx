@@ -352,47 +352,53 @@ function EmployerDashboard({ user, logout }) {
               </div>
             )}
 
-            {jobs.length === 0 && !showForm && (
-              <div style={{ textAlign: "center", padding: "80px 20px", color: "#374151" }}>
-                <div style={{ fontSize: 56, marginBottom: 16 }}>📋</div>
-                <p>No jobs posted yet. Click <strong style={{ color: "white" }}>+ Post New Job</strong> to get started.</p>
-              </div>
-            )}
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {jobs.map(job => (
-                <div key={job._id} style={S.card}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{job.jobTitle}</div>
-                      <div style={{ color: "#94a3b8", fontSize: 13, display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 6 }}>
-                        {job.companyName && <span>🏢 {job.companyName}</span>}
-                        <span>📍 {job.location || "Location not set"}</span>
-                        {job.jobType  && <span>💼 {job.jobType}</span>}
-                        {job.workMode && <span>🏠 {job.workMode}</span>}
-                        {job.salary   && <span>💰 {job.salary}</span>}
-                      </div>
-                      <div style={{ color: "#475569", fontSize: 12, marginBottom: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {job.jobDescription?.substring(0, 120)}...
-                      </div>
-                      {(job.jobKeywords||[]).length > 0 && (
-                        <div>
-                          <div style={{ fontSize: 10, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>🔑 Keyword Library ({job.jobKeywords.length})</div>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                            {job.jobKeywords.slice(0, 12).map((kw, i) => <span key={i} style={{ background: "#1e293b", color: "#94a3b8", fontSize: 11, padding: "3px 10px", borderRadius: 99, border: "1px solid #334155" }}>{kw}</span>)}
-                            {job.jobKeywords.length > 12 && <span style={{ color: "#475569", fontSize: 11, padding: "3px 8px" }}>+{job.jobKeywords.length - 12} more</span>}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0 }}>
-                      <button onClick={() => openEdit(job)} style={{ background: "#1e293b", color: "#94a3b8", border: "1px solid #334155", borderRadius: 8, padding: "8px 14px", fontSize: 12, cursor: "pointer" }}>✏️ Edit</button>
-                      <button onClick={() => deleteJob(job._id)} style={{ background: "rgba(239,68,68,0.1)", color: "#f87171", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, padding: "8px 14px", fontSize: 12, cursor: "pointer" }}>🗑️ Delete</button>
-                    </div>
+            {/* Job list — hidden while the create/edit form is open, so the job being edited
+                never appears twice on screen at once (duplicate-looking card bug) */}
+            {!showForm && (
+              <>
+                {jobs.length === 0 && (
+                  <div style={{ textAlign: "center", padding: "80px 20px", color: "#374151" }}>
+                    <div style={{ fontSize: 56, marginBottom: 16 }}>📋</div>
+                    <p>No jobs posted yet. Click <strong style={{ color: "white" }}>+ Post New Job</strong> to get started.</p>
                   </div>
+                )}
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {jobs.map(job => (
+                    <div key={job._id} style={S.card}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{job.jobTitle}</div>
+                          <div style={{ color: "#94a3b8", fontSize: 13, display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 6 }}>
+                            {job.companyName && <span>🏢 {job.companyName}</span>}
+                            <span>📍 {job.location || "Location not set"}</span>
+                            {job.jobType  && <span>💼 {job.jobType}</span>}
+                            {job.workMode && <span>🏠 {job.workMode}</span>}
+                            {job.salary   && <span>💰 {job.salary}</span>}
+                          </div>
+                          <div style={{ color: "#475569", fontSize: 12, marginBottom: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {job.jobDescription?.substring(0, 120)}...
+                          </div>
+                          {(job.jobKeywords||[]).length > 0 && (
+                            <div>
+                              <div style={{ fontSize: 10, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>🔑 Keyword Library ({job.jobKeywords.length})</div>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                                {job.jobKeywords.slice(0, 12).map((kw, i) => <span key={i} style={{ background: "#1e293b", color: "#94a3b8", fontSize: 11, padding: "3px 10px", borderRadius: 99, border: "1px solid #334155" }}>{kw}</span>)}
+                                {job.jobKeywords.length > 12 && <span style={{ color: "#475569", fontSize: 11, padding: "3px 8px" }}>+{job.jobKeywords.length - 12} more</span>}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0 }}>
+                          <button onClick={() => openEdit(job)} style={{ background: "#1e293b", color: "#94a3b8", border: "1px solid #334155", borderRadius: 8, padding: "8px 14px", fontSize: 12, cursor: "pointer" }}>✏️ Edit</button>
+                          <button onClick={() => deleteJob(job._id)} style={{ background: "rgba(239,68,68,0.1)", color: "#f87171", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, padding: "8px 14px", fontSize: 12, cursor: "pointer" }}>🗑️ Delete</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            )}
           </>
         )}
 

@@ -64,8 +64,6 @@ function CandidateDashboard({ user, logout }) {
       const res  = await fetch(`${BASE}/match-jobs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ candidateEmail: user.email }) });
       const data = await res.json();
       setJobs(data);
-      if (data.length > 0) selectJob(data[0]);
-      else { setSelectedJob(null); setAiAnalysis(null); }
     } catch (e) { console.log(e); }
     setLoadingJobs(false);
   };
@@ -113,10 +111,30 @@ function CandidateDashboard({ user, logout }) {
 
   useEffect(() => { fetchMyData(); fetchJobs(); fetchAppliedAndSaved(); }, [user]);
 
+  /* ── Mutual exclusivity ──
+     Job Matches:    hide if applied/accepted (always), hide if saved UNLESS rejected (rejected always shows for re-apply)
+     Interested Jobs: hide if applied/accepted/rejected (handled in SavedTab via appliedJobIds prop)
+     My Applications: the source of truth for "applied" — untouched here
+  */
   const displayedJobs = jobs
     .filter(job => !appliedJobs.includes(job.jobId))
+    .filter(job => rejectedJobs.includes(job.jobId) || !savedJobs.includes(job.jobId))
     .filter(job => filterLevel === "All" || job.recommendation === filterLevel)
     .sort((a, b) => sortOrder === "score" ? b.score - a.score : a.daysAgo - b.daysAgo);
+
+  /* Keep the right-hand detail panel in sync with the left list — never show a stale/removed job */
+  const displayedJobIds = displayedJobs.map(j => j.jobId).join(",");
+  useEffect(() => {
+    if (loadingJobs) return;
+    if (displayedJobs.length === 0) {
+      if (selectedJob !== null) setSelectedJob(null);
+      return;
+    }
+    if (!selectedJob || !displayedJobs.some(j => j.jobId === selectedJob.jobId)) {
+      selectJob(displayedJobs[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayedJobIds, loadingJobs]);
 
   const candidateName = myData?.name || user.email.split("@")[0];
   const hasResume     = !!myData?.resumeText;
@@ -199,178 +217,185 @@ function CandidateDashboard({ user, logout }) {
             </div>
           </div>
 
-          <div style={{ display: "flex", height: "calc(100vh - 220px)" }} onClick={() => showFilter && setShowFilter(false)}>
-            {/* LEFT: Job List */}
-            <div style={{ width: 360, flexShrink: 0, overflowY: "auto", borderRight: "1px solid #1f2937", background: "#111827" }}>
-              {loadingJobs && <div style={{ textAlign: "center", padding: "60px 20px", color: "#475569" }}><div style={{ fontSize: 40, marginBottom: 12 }}>🔍</div><p style={{ fontSize: 13 }}>Finding your best matches...</p></div>}
-              {!loadingJobs && displayedJobs.length === 0 && (
-                <div style={{ textAlign: "center", padding: "60px 20px", color: "#475569" }}>
-                  <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
-                  <p style={{ fontSize: 13 }}>{jobs.length === 0 ? "No jobs yet — upload your resume first" : appliedJobs.length > 0 ? "All available jobs applied!" : "No jobs match this filter"}</p>
-                </div>
-              )}
-              {!loadingJobs && displayedJobs.map((job, i) => {
-                const ms  = MS[job.recommendation] || MS["Weak Match"];
-                const sel = selectedJob?.jobId === job.jobId;
-                const state = getApplyState(job.jobId);
-                return (
-                  <div key={i} onClick={() => selectJob(job)} style={{ padding: "16px 20px", borderBottom: "1px solid #1f2937", cursor: "pointer", background: sel ? "rgba(37,99,235,0.1)" : "transparent", borderLeft: sel ? "3px solid #2563eb" : "3px solid transparent" }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: sel ? "#60a5fa" : "#a78bfa", marginBottom: 4 }}>
-                      {job.jobTitle}
-                      {state === "rejected" && <span style={{ marginLeft: 6, fontSize: 10, background: "rgba(239,68,68,0.15)", color: "#f87171", padding: "2px 7px", borderRadius: 99, fontWeight: 600 }}>Rejected</span>}
+          {!loadingJobs && displayedJobs.length === 0 ? (
+            /* ── Full-width empty state — no stale split panel ── */
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "calc(100vh - 220px)", color: "#374151" }}>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 56, marginBottom: 16 }}>📭</div>
+                <p style={{ fontSize: 15, color: "#6b7280", marginBottom: 6 }}>
+                  {jobs.length === 0 ? "No jobs yet — upload your resume first" : "All available jobs applied or marked interested!"}
+                </p>
+                <p style={{ fontSize: 13, color: "#374151" }}>Check the <strong style={{ color: "#60a5fa" }}>My Applications</strong> or <strong style={{ color: "#60a5fa" }}>Interested Jobs</strong> tab.</p>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", height: "calc(100vh - 220px)" }} onClick={() => showFilter && setShowFilter(false)}>
+              {/* LEFT: Job List */}
+              <div style={{ width: 360, flexShrink: 0, overflowY: "auto", borderRight: "1px solid #1f2937", background: "#111827" }}>
+                {loadingJobs && <div style={{ textAlign: "center", padding: "60px 20px", color: "#475569" }}><div style={{ fontSize: 40, marginBottom: 12 }}>🔍</div><p style={{ fontSize: 13 }}>Finding your best matches...</p></div>}
+                {!loadingJobs && displayedJobs.map((job, i) => {
+                  const ms  = MS[job.recommendation] || MS["Weak Match"];
+                  const sel = selectedJob?.jobId === job.jobId;
+                  const state = getApplyState(job.jobId);
+                  return (
+                    <div key={i} onClick={() => selectJob(job)} style={{ padding: "16px 20px", borderBottom: "1px solid #1f2937", cursor: "pointer", background: sel ? "rgba(37,99,235,0.1)" : "transparent", borderLeft: sel ? "3px solid #2563eb" : "3px solid transparent" }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: sel ? "#60a5fa" : "#a78bfa", marginBottom: 4 }}>
+                        {job.jobTitle}
+                        {state === "rejected" && <span style={{ marginLeft: 6, fontSize: 10, background: "rgba(239,68,68,0.15)", color: "#f87171", padding: "2px 7px", borderRadius: 99, fontWeight: 600 }}>Rejected</span>}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 2 }}>📍 {job.location}</div>
+                      <div style={{ fontSize: 11, color: "#374151", marginBottom: 10 }}>Posted {job.daysAgo === 0 ? "today" : job.daysAgo === 1 ? "yesterday" : `${job.daysAgo} days ago`}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <svg width="18" height="18" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="none" stroke={ms.hex} strokeWidth="1.5" opacity="0.2"/><circle cx="10" cy="10" r="6" fill="none" stroke={ms.hex} strokeWidth="1.5" opacity="0.45"/><circle cx="10" cy="10" r="3" fill={ms.hex}/></svg>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: ms.text }}>{job.score}% · {job.recommendation}</span>
+                      </div>
                     </div>
-                    <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 2 }}>📍 {job.location}</div>
-                    <div style={{ fontSize: 11, color: "#374151", marginBottom: 10 }}>Posted {job.daysAgo === 0 ? "today" : job.daysAgo === 1 ? "yesterday" : `${job.daysAgo} days ago`}</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <svg width="18" height="18" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="none" stroke={ms.hex} strokeWidth="1.5" opacity="0.2"/><circle cx="10" cy="10" r="6" fill="none" stroke={ms.hex} strokeWidth="1.5" opacity="0.45"/><circle cx="10" cy="10" r="3" fill={ms.hex}/></svg>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: ms.text }}>{job.score}% · {job.recommendation}</span>
+                  );
+                })}
+              </div>
+
+              {/* RIGHT: Job Detail */}
+              {selectedJob ? (
+                <div style={{ flex: 1, overflowY: "auto", background: "#0f172a" }}>
+                  <div style={{ padding: "28px 36px 22px", borderBottom: "1px solid #1f2937" }}>
+                    <h1 style={{ fontSize: 22, fontWeight: 700, color: "white", marginBottom: 6 }}>{selectedJob.jobTitle}</h1>
+                    <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 4 }}>📍 {selectedJob.location}</div>
+                    <div style={{ fontSize: 12, color: "#475569", marginBottom: 20 }}>🏢 {selectedJob.companyName || selectedJob.employerEmail}</div>
+                    {getApplyState(selectedJob.jobId) === "rejected" && (
+                      <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#f87171" }}>
+                        ✗ Your previous application was rejected. You may re-apply below.
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 12 }}>
+                      {(() => {
+                        const state = getApplyState(selectedJob.jobId);
+                        const isApplying = applyingId === selectedJob.jobId;
+                        const cfg = {
+                          applied:  { label: "✓ Applied",  bg: "rgba(16,185,129,0.15)", border: "rgba(16,185,129,0.4)", color: "#34d399", disabled: true  },
+                          rejected: { label: "Re-Apply",   bg: "#7c3aed", border: "#7c3aed", color: "white", disabled: false },
+                          none:     { label: "Apply Now",  bg: "#7c3aed", border: "#7c3aed", color: "white", disabled: false },
+                        }[state];
+                        return (
+                          <button onClick={() => applyToJob(selectedJob)} disabled={cfg.disabled || isApplying} style={{ padding: "10px 22px", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: cfg.disabled ? "default" : "pointer", border: `2px solid ${cfg.border}`, color: cfg.color, background: isApplying ? "#374151" : cfg.bg, opacity: isApplying ? 0.7 : 1 }}>
+                            {isApplying ? "Applying..." : cfg.label}
+                          </button>
+                        );
+                      })()}
+                      <button onClick={() => toggleSaveJob(selectedJob.jobId)} style={{ padding: "10px 22px", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "2px solid #334155", color: "#94a3b8", background: "#1e293b" }}>
+                        ⭐ Mark as Interested
+                      </button>
                     </div>
                   </div>
-                );
-              })}
-            </div>
 
-            {/* RIGHT: Job Detail */}
-            {selectedJob ? (
-              <div style={{ flex: 1, overflowY: "auto", background: "#0f172a" }}>
-                <div style={{ padding: "28px 36px 22px", borderBottom: "1px solid #1f2937" }}>
-                  <h1 style={{ fontSize: 22, fontWeight: 700, color: "white", marginBottom: 6 }}>{selectedJob.jobTitle}</h1>
-                  <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 4 }}>📍 {selectedJob.location}</div>
-                  <div style={{ fontSize: 12, color: "#475569", marginBottom: 20 }}>🏢 {selectedJob.companyName || selectedJob.employerEmail}</div>
-                  {getApplyState(selectedJob.jobId) === "rejected" && (
-                    <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#f87171" }}>
-                      ✗ Your previous application was rejected. You may re-apply below.
-                    </div>
-                  )}
-                  <div style={{ display: "flex", gap: 12 }}>
-                    {(() => {
-                      const state = getApplyState(selectedJob.jobId);
-                      const isApplying = applyingId === selectedJob.jobId;
-                      const cfg = {
-                        applied:  { label: "✓ Applied",  bg: "rgba(16,185,129,0.15)", border: "rgba(16,185,129,0.4)", color: "#34d399", disabled: true  },
-                        rejected: { label: "Re-Apply",   bg: "#7c3aed", border: "#7c3aed", color: "white", disabled: false },
-                        none:     { label: "Apply Now",  bg: "#7c3aed", border: "#7c3aed", color: "white", disabled: false },
-                      }[state];
+                  {/* NLP Match Score */}
+                  <div style={{ padding: "20px 36px", borderBottom: "1px solid #1f2937" }}>
+                    {analyzing ? (
+                      <div style={{ color: "#6b7280", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ width: 14, height: 14, border: "2px solid #334155", borderTopColor: "#2563eb", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />
+                        Calculating keyword match...
+                      </div>
+                    ) : (() => {
+                      const d   = aiAnalysis || selectedJob;
+                      const score = d.score ?? selectedJob.score;
+                      const rec = score >= 70 ? "Perfect Match" : score >= 50 ? "Good Match" : score >= 30 ? "Partial Match" : "Weak Match";
+                      const ms  = MS[rec] || MS["Weak Match"];
+                      const matched = d.matchedSkills || selectedJob.matchedSkills || [];
+                      const missing = d.missingSkills || [];
                       return (
-                        <button onClick={() => applyToJob(selectedJob)} disabled={cfg.disabled || isApplying} style={{ padding: "10px 22px", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: cfg.disabled ? "default" : "pointer", border: `2px solid ${cfg.border}`, color: cfg.color, background: isApplying ? "#374151" : cfg.bg, opacity: isApplying ? 0.7 : 1 }}>
-                          {isApplying ? "Applying..." : cfg.label}
-                        </button>
+                        <div>
+                          {/* Score card */}
+                          <div style={{ display: "flex", gap: 18, padding: 16, borderRadius: 14, background: ms.bg, border: `1px solid ${ms.border}`, marginBottom: 12 }}>
+                            <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                              <svg width="56" height="56" viewBox="0 0 56 56">
+                                <circle cx="28" cy="28" r="25" fill="none" stroke={ms.hex} strokeWidth="2" opacity="0.15"/>
+                                <circle cx="28" cy="28" r="17" fill="none" stroke={ms.hex} strokeWidth="2" opacity="0.35"/>
+                                <circle cx="28" cy="28" r="9"  fill={ms.hex} opacity="0.5"/>
+                                <circle cx="28" cy="28" r="5"  fill={ms.hex}/>
+                              </svg>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: ms.text }}>{score}%</span>
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: ms.text, marginBottom: 6 }}>
+                                {rec} — Keyword Match Score
+                              </div>
+                              <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>
+                                Based on exact NLP keyword matching between your resume and this job's requirements.
+                              </div>
+                              {matched.length > 0 && (
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+                                  {matched.map((s, i) => <span key={i} style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", fontSize: 11, padding: "3px 10px", borderRadius: 99 }}>✓ {s}</span>)}
+                                </div>
+                              )}
+                              {missing.length > 0 && (
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                  {missing.slice(0, 6).map((s, i) => <span key={i} style={{ background: "rgba(107,114,128,0.15)", color: "#9ca3af", fontSize: 11, padding: "3px 10px", borderRadius: 99 }}>○ {s}</span>)}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          {/* AI summary */}
+                          {d.summary && (
+                            <div style={{ background: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.2)", borderRadius: 10, padding: "12px 14px" }}>
+                              <div style={{ fontSize: 11, color: "#7c3aed", fontWeight: 600, marginBottom: 6 }}>🤖 AI Analysis</div>
+                              <p style={{ fontSize: 12, color: "#94a3b8", margin: 0, lineHeight: 1.7 }}>{d.summary}</p>
+                            </div>
+                          )}
+                        </div>
                       );
                     })()}
-                    <button onClick={() => toggleSaveJob(selectedJob.jobId)} style={{ padding: "10px 22px", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer", border: savedJobs.includes(selectedJob.jobId) ? "2px solid rgba(37,99,235,0.5)" : "2px solid #334155", color: savedJobs.includes(selectedJob.jobId) ? "#60a5fa" : "#94a3b8", background: savedJobs.includes(selectedJob.jobId) ? "rgba(37,99,235,0.1)" : "#1e293b" }}>
-                      {savedJobs.includes(selectedJob.jobId) ? "⭐ Interested" : "⭐ Mark as Interested"}
-                    </button>
                   </div>
-                </div>
 
-                {/* NLP Match Score */}
-                <div style={{ padding: "20px 36px", borderBottom: "1px solid #1f2937" }}>
-                  {analyzing ? (
-                    <div style={{ color: "#6b7280", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ width: 14, height: 14, border: "2px solid #334155", borderTopColor: "#2563eb", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />
-                      Calculating keyword match...
-                    </div>
-                  ) : (() => {
-                    const d   = aiAnalysis || selectedJob;
-                    const score = d.score ?? selectedJob.score;
-                    const rec = score >= 70 ? "Perfect Match" : score >= 50 ? "Good Match" : score >= 30 ? "Partial Match" : "Weak Match";
-                    const ms  = MS[rec] || MS["Weak Match"];
-                    const matched = d.matchedSkills || selectedJob.matchedSkills || [];
-                    const missing = d.missingSkills || [];
-                    return (
-                      <div>
-                        {/* Score card */}
-                        <div style={{ display: "flex", gap: 18, padding: 16, borderRadius: 14, background: ms.bg, border: `1px solid ${ms.border}`, marginBottom: 12 }}>
-                          <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                            <svg width="56" height="56" viewBox="0 0 56 56">
-                              <circle cx="28" cy="28" r="25" fill="none" stroke={ms.hex} strokeWidth="2" opacity="0.15"/>
-                              <circle cx="28" cy="28" r="17" fill="none" stroke={ms.hex} strokeWidth="2" opacity="0.35"/>
-                              <circle cx="28" cy="28" r="9"  fill={ms.hex} opacity="0.5"/>
-                              <circle cx="28" cy="28" r="5"  fill={ms.hex}/>
-                            </svg>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: ms.text }}>{score}%</span>
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: ms.text, marginBottom: 6 }}>
-                              {rec} — Keyword Match Score
-                            </div>
-                            <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>
-                              Based on exact NLP keyword matching between your resume and this job's requirements.
-                            </div>
-                            {matched.length > 0 && (
-                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
-                                {matched.map((s, i) => <span key={i} style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", fontSize: 11, padding: "3px 10px", borderRadius: 99 }}>✓ {s}</span>)}
-                              </div>
-                            )}
-                            {missing.length > 0 && (
-                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                                {missing.slice(0, 6).map((s, i) => <span key={i} style={{ background: "rgba(107,114,128,0.15)", color: "#9ca3af", fontSize: 11, padding: "3px 10px", borderRadius: 99 }}>○ {s}</span>)}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        {/* AI summary */}
-                        {d.summary && (
-                          <div style={{ background: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.2)", borderRadius: 10, padding: "12px 14px" }}>
-                            <div style={{ fontSize: 11, color: "#7c3aed", fontWeight: 600, marginBottom: 6 }}>🤖 AI Analysis</div>
-                            <p style={{ fontSize: 12, color: "#94a3b8", margin: 0, lineHeight: 1.7 }}>{d.summary}</p>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                {/* Job Keywords Library */}
-                {selectedJob.jobKeywords?.length > 0 && (
-                  <div style={{ padding: "16px 36px", borderBottom: "1px solid #1f2937" }}>
-                    <div style={{ fontSize: 11, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>🔑 Job Keyword Library ({selectedJob.jobKeywords.length})</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 100, overflowY: "auto" }}>
-                      {selectedJob.jobKeywords.map((kw, i) => (
-                        <span key={i} style={{ background: "#1e293b", color: "#94a3b8", fontSize: 11, padding: "3px 10px", borderRadius: 99, border: "1px solid #334155" }}>{kw}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Detail Tabs */}
-                <div style={{ borderBottom: "1px solid #1f2937", paddingLeft: 36, display: "flex" }}>
-                  {[{ key: "description", label: "Job Description" }, { key: "company", label: "Company & Benefits" }].map(t => (
-                    <button key={t.key} onClick={() => setActiveDetail(t.key)} style={{ padding: "12px 20px", fontSize: 13, fontWeight: 500, cursor: "pointer", background: "none", border: "none", borderBottom: activeDetail === t.key ? "2px solid #2563eb" : "2px solid transparent", color: activeDetail === t.key ? "#60a5fa" : "#6b7280" }}>{t.label}</button>
-                  ))}
-                </div>
-                <div style={{ padding: "24px 36px" }}>
-                  {activeDetail === "description" ? (
-                    <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.9, whiteSpace: "pre-wrap" }}>{selectedJob.jobDescription || "No description provided."}</div>
-                  ) : (
-                    <div style={{ fontSize: 13 }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-                        {[["🏢 Company", selectedJob.companyName || selectedJob.employerEmail],["📍 Location", selectedJob.location||"Not specified"],["💼 Job Type", selectedJob.jobType||"Not specified"],["🏠 Work Mode", selectedJob.workMode||"Not specified"],["💰 Salary", selectedJob.salary||"Not specified"],["📧 Contact", selectedJob.contactEmail||selectedJob.employerEmail]].map(([label, val]) => (
-                          <div key={label} style={{ background: "#1e293b", borderRadius: 10, padding: "12px 14px" }}>
-                            <div style={{ color: "#475569", fontSize: 11, marginBottom: 4 }}>{label}</div>
-                            <div style={{ color: "#e2e8f0", fontSize: 13 }}>{val}</div>
-                          </div>
+                  {/* Job Keywords Library */}
+                  {selectedJob.jobKeywords?.length > 0 && (
+                    <div style={{ padding: "16px 36px", borderBottom: "1px solid #1f2937" }}>
+                      <div style={{ fontSize: 11, color: "#475569", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>🔑 Job Keyword Library ({selectedJob.jobKeywords.length})</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 100, overflowY: "auto" }}>
+                        {selectedJob.jobKeywords.map((kw, i) => (
+                          <span key={i} style={{ background: "#1e293b", color: "#94a3b8", fontSize: 11, padding: "3px 10px", borderRadius: 99, border: "1px solid #334155" }}>{kw}</span>
                         ))}
                       </div>
-                      {selectedJob.companyDescription && <div style={{ background: "#1e293b", borderRadius: 10, padding: "14px 16px", marginBottom: 12 }}><div style={{ color: "#475569", fontSize: 11, marginBottom: 8 }}>🏷️ About the Company</div><div style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{selectedJob.companyDescription}</div></div>}
-                      {selectedJob.benefits && <div style={{ background: "#1e293b", borderRadius: 10, padding: "14px 16px" }}><div style={{ color: "#475569", fontSize: 11, marginBottom: 8 }}>🎁 Benefits & Perks</div><div style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{selectedJob.benefits}</div></div>}
-                      {!selectedJob.companyDescription && !selectedJob.benefits && <div style={{ color: "#475569", fontSize: 13 }}>No additional company info provided.</div>}
                     </div>
                   )}
+
+                  {/* Detail Tabs */}
+                  <div style={{ borderBottom: "1px solid #1f2937", paddingLeft: 36, display: "flex" }}>
+                    {[{ key: "description", label: "Job Description" }, { key: "company", label: "Company & Benefits" }].map(t => (
+                      <button key={t.key} onClick={() => setActiveDetail(t.key)} style={{ padding: "12px 20px", fontSize: 13, fontWeight: 500, cursor: "pointer", background: "none", border: "none", borderBottom: activeDetail === t.key ? "2px solid #2563eb" : "2px solid transparent", color: activeDetail === t.key ? "#60a5fa" : "#6b7280" }}>{t.label}</button>
+                    ))}
+                  </div>
+                  <div style={{ padding: "24px 36px" }}>
+                    {activeDetail === "description" ? (
+                      <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.9, whiteSpace: "pre-wrap" }}>{selectedJob.jobDescription || "No description provided."}</div>
+                    ) : (
+                      <div style={{ fontSize: 13 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+                          {[["🏢 Company", selectedJob.companyName || selectedJob.employerEmail],["📍 Location", selectedJob.location||"Not specified"],["💼 Job Type", selectedJob.jobType||"Not specified"],["🏠 Work Mode", selectedJob.workMode||"Not specified"],["💰 Salary", selectedJob.salary||"Not specified"],["📧 Contact", selectedJob.contactEmail||selectedJob.employerEmail]].map(([label, val]) => (
+                            <div key={label} style={{ background: "#1e293b", borderRadius: 10, padding: "12px 14px" }}>
+                              <div style={{ color: "#475569", fontSize: 11, marginBottom: 4 }}>{label}</div>
+                              <div style={{ color: "#e2e8f0", fontSize: 13 }}>{val}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {selectedJob.companyDescription && <div style={{ background: "#1e293b", borderRadius: 10, padding: "14px 16px", marginBottom: 12 }}><div style={{ color: "#475569", fontSize: 11, marginBottom: 8 }}>🏷️ About the Company</div><div style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{selectedJob.companyDescription}</div></div>}
+                        {selectedJob.benefits && <div style={{ background: "#1e293b", borderRadius: 10, padding: "14px 16px" }}><div style={{ color: "#475569", fontSize: 11, marginBottom: 8 }}>🎁 Benefits & Perks</div><div style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{selectedJob.benefits}</div></div>}
+                        {!selectedJob.companyDescription && !selectedJob.benefits && <div style={{ color: "#475569", fontSize: 13 }}>No additional company info provided.</div>}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#374151" }}>
-                <div style={{ textAlign: "center" }}><div style={{ fontSize: 48, marginBottom: 14 }}>👈</div><p style={{ fontSize: 14 }}>Select a job to view details</p></div>
-              </div>
-            )}
-          </div>
+              ) : (
+                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#374151" }}>
+                  <div style={{ textAlign: "center" }}><div style={{ fontSize: 48, marginBottom: 14 }}>👈</div><p style={{ fontSize: 14 }}>Select a job to view details</p></div>
+                </div>
+              )}
+            </div>
+          )}
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </>
       )}
 
       {activeTab === "applied"  && <AppliedTab email={user.email} myData={myData} onAppliedChange={fetchAppliedAndSaved} />}
-      {activeTab === "saved"    && <SavedTab   email={user.email} onToggle={toggleSaveJob} savedJobs={savedJobs} setSavedJobs={setSavedJobs} />}
+      {activeTab === "saved"    && <SavedTab   email={user.email} appliedJobIds={[...appliedJobs, ...rejectedJobs]} setSavedJobs={setSavedJobs} />}
 
       {activeTab === "profile" && (
         <div style={{ maxWidth: 640, margin: "32px auto", background: "#111827", border: "1px solid #1f2937", borderRadius: 16, padding: 32 }}>
@@ -399,7 +424,7 @@ function AppliedTab({ email, myData, onAppliedChange }) {
   useEffect(() => { fetchApps(); }, [email]);
 
   const cancelApp = async (appId) => {
-    if (!window.confirm("Cancel this application?")) return;
+    if (!window.confirm("Cancel this application? It will return to Job Matches or Interested Jobs.")) return;
     try {
       const res = await fetch(`${BASE}/cancel-application/${appId}`, { method: "DELETE" });
       if (res.ok) { fetchApps(); if (onAppliedChange) onAppliedChange(); }
@@ -473,16 +498,18 @@ function AppliedTab({ email, myData, onAppliedChange }) {
   );
 }
 
-/* ── Interested Jobs Tab — with Remove + expandable detail ── */
-function SavedTab({ email, onToggle, savedJobs, setSavedJobs }) {
+/* ── Interested Jobs Tab — excludes anything that is already applied/accepted/rejected ── */
+function SavedTab({ email, appliedJobIds, setSavedJobs }) {
   const [saved,    setSaved]    = useState([]);
   const [expanded, setExpanded] = useState(null);
   const [removing, setRemoving] = useState(null);
 
-  useEffect(() => {
+  const fetchSaved = () => {
     fetch(`${BASE}/saved-jobs/${email}`)
       .then(r => r.json()).then(data => setSaved(Array.isArray(data) ? data : []));
-  }, [email]);
+  };
+
+  useEffect(() => { fetchSaved(); }, [email]);
 
   const removeJob = async (jobId) => {
     setRemoving(jobId);
@@ -497,15 +524,18 @@ function SavedTab({ email, onToggle, savedJobs, setSavedJobs }) {
     setRemoving(null);
   };
 
+  /* Hide jobs that are now applied/accepted/rejected — they belong in My Applications instead */
+  const visibleSaved = saved.filter(job => !appliedJobIds.includes(job._id.toString()));
+
   return (
     <div style={{ maxWidth: 720, margin: "32px auto", padding: "0 16px" }}>
-      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 20 }}>Interested Jobs ({saved.length})</h2>
-      {saved.length === 0 ? (
+      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 20 }}>Interested Jobs ({visibleSaved.length})</h2>
+      {visibleSaved.length === 0 ? (
         <div style={{ textAlign: "center", padding: "60px 20px", color: "#475569" }}>
           <div style={{ fontSize: 40, marginBottom: 10 }}>⭐</div>
           <p>No interested jobs yet. Mark jobs from Job Matches!</p>
         </div>
-      ) : saved.map((job, i) => {
+      ) : visibleSaved.map((job, i) => {
         const isExp = expanded === job._id;
         return (
           <div key={i} style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 14, marginBottom: 12, overflow: "hidden" }}>
