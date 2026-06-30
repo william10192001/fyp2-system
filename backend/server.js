@@ -141,7 +141,6 @@ app.post("/send-otp", async (req, res) => {
     user.resetTokenExpiry = Date.now() + 10 * 60 * 1000;
     await user.save();
 
-    // Respond immediately, send email async via Resend HTTP (not SMTP)
     res.json({ msg: "Verification code sent to your email" });
 
     sendEmailAsync({
@@ -219,20 +218,52 @@ app.post("/profile", async (req, res) => {
   } catch { res.status(500).json({ msg: "Save failed ❌" }); }
 });
 
+/* ── Smart Resume upload — AI auto-fills profile fields (name, phone, skills, experience, education) ── */
 app.post("/upload-resume", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ msg: "No file uploaded" });
     const data = await pdf(req.file.buffer);
     const text = data.text || "";
     if (text.trim().length < 30) return res.status(400).json({ msg: "PDF has no readable text ❌" });
+
     const expMatch = text.match(/(\d+)\+?\s+years?/i);
     const keywords = extractKeywords(text);
+
+    // Save keywords + raw resume text immediately (used for matching)
     await User.findOneAndUpdate({ email: req.body.email }, {
       resumeKeywords: keywords,
       experienceYears: expMatch ? parseInt(expMatch[1]) : 0,
       resumeText: text.substring(0, 4000)
     });
-    res.json({ msg: "Resume processed ✅", totalKeywords: keywords.length, keywords });
+
+    // AI extracts structured profile fields for auto-fill (does NOT auto-save profile — user reviews & saves)
+    const prompt = `Extract candidate profile information from this resume text. Return ONLY valid JSON, no extra text.
+Fields (use empty string "" if not found):
+{"name":"","phone":"","skills":"","experience":"","education":""}
+"skills" should be a short comma-separated list of key technical/professional skills.
+"experience" should be a brief 1-2 sentence summary of work experience (role + years).
+"education" should be the highest qualification + institution, e.g. "BSc Computer Science, UTM".
+TEXT:\n${text.substring(0, 3000)}`;
+
+    let extracted = {};
+    try {
+      const aiRes = await groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 400, temperature: 0.1
+      });
+      const raw = aiRes.choices[0].message.content.trim().replace(/```json|```/g, "").trim();
+      extracted = JSON.parse(raw);
+    } catch (e) { console.log("Resume AI extraction failed:", e.message); }
+
+    res.json({
+      msg: "Resume processed ✅", totalKeywords: keywords.length, keywords,
+      name:       extracted.name       || "",
+      phone:      extracted.phone      || "",
+      skills:     extracted.skills     || "",
+      experience: extracted.experience || "",
+      education:  extracted.education  || "",
+    });
   } catch (err) { console.log("UPLOAD ERROR:", err); res.status(500).json({ msg: "Upload failed ❌" }); }
 });
 
@@ -426,6 +457,13 @@ app.put("/application/:id/status", async (req, res) => {
   } catch { res.status(500).json({ msg: "Update failed ❌" }); }
 });
 
+/* Employer deletes an application from their inbox (any status) */
+app.delete("/application/:id", async (req, res) => {
+  try { await Application.findByIdAndDelete(req.params.id); res.json({ msg: "Application deleted ✅" }); }
+  catch { res.status(500).json({ msg: "Delete failed ❌" }); }
+});
+
+/* Candidate cancels their own pending application */
 app.delete("/cancel-application/:id", async (req, res) => {
   try { await Application.findByIdAndDelete(req.params.id); res.json({ msg: "Cancelled ✅" }); }
   catch { res.status(500).json({ msg: "Cancel failed ❌" }); }

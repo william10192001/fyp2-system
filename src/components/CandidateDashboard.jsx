@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import CandidateProfile from "./CandidateProfile";
-import ResumeUpload from "./ResumeUpload";
 
 const BASE = "https://fyp2-backend-gihc.onrender.com";
 
@@ -35,9 +34,10 @@ function CandidateDashboard({ user, logout }) {
   const [sortOrder,    setSortOrder]    = useState("score");
   const [showFilter,   setShowFilter]   = useState(false);
 
-  const fetchMyData = () => {
-    fetch(`${BASE}/candidates`).then(r => r.json())
-      .then(data => setMyData(data.find(c => c.email === user.email)));
+  const fetchMyData = async () => {
+    const r = await fetch(`${BASE}/candidates`);
+    const data = await r.json();
+    setMyData(data.find(c => c.email === user.email));
   };
 
   const fetchAppliedAndSaved = async () => {
@@ -65,6 +65,7 @@ function CandidateDashboard({ user, logout }) {
       const data = await res.json();
       setJobs(data);
       if (data.length > 0) selectJob(data[0]);
+      else { setSelectedJob(null); setAiAnalysis(null); }
     } catch (e) { console.log(e); }
     setLoadingJobs(false);
   };
@@ -77,6 +78,13 @@ function CandidateDashboard({ user, logout }) {
       setAiAnalysis(data);
     } catch (e) { console.log(e); }
     setAnalyzing(false);
+  };
+
+  /* Called after resume upload / profile save — refreshes job matches so scores are never stale */
+  const refreshAll = async () => {
+    await fetchMyData();
+    await fetchJobs();
+    await fetchAppliedAndSaved();
   };
 
   const applyToJob = async (job) => {
@@ -150,11 +158,10 @@ function CandidateDashboard({ user, logout }) {
       {/* TABS */}
       <div style={S.tabBar}>
         {[
-          { key: "jobs",    label: "🎯 Job Matches"    },
-          { key: "applied", label: "✅ My Applications" },
-          { key: "saved",   label: "⭐ Interested Jobs"  },
-          { key: "profile", label: "👤 My Profile"      },
-          { key: "resume",  label: "📄 Resume Upload"   },
+          { key: "jobs",    label: "🎯 Job Matches"     },
+          { key: "applied", label: "✅ My Applications"  },
+          { key: "saved",   label: "⭐ Interested Jobs"   },
+          { key: "profile", label: "👤 My Profile & Resume" },
         ].map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key)} style={{
             padding: "14px 18px", fontSize: 13, fontWeight: 500, cursor: "pointer", background: "none", border: "none",
@@ -366,15 +373,10 @@ function CandidateDashboard({ user, logout }) {
       {activeTab === "saved"    && <SavedTab   email={user.email} onToggle={toggleSaveJob} savedJobs={savedJobs} setSavedJobs={setSavedJobs} />}
 
       {activeTab === "profile" && (
-        <div style={{ maxWidth: 600, margin: "32px auto", background: "#111827", border: "1px solid #1f2937", borderRadius: 16, padding: 32 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 24 }}>My Profile</h2>
-          <CandidateProfile user={user} refresh={fetchMyData} />
-        </div>
-      )}
-      {activeTab === "resume" && (
-        <div style={{ maxWidth: 600, margin: "32px auto", background: "#111827", border: "1px solid #1f2937", borderRadius: 16, padding: 32 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 24 }}>Resume Upload</h2>
-          <ResumeUpload user={user} />
+        <div style={{ maxWidth: 640, margin: "32px auto", background: "#111827", border: "1px solid #1f2937", borderRadius: 16, padding: 32 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>My Profile & Resume</h2>
+          <p style={{ color: "#6b7280", fontSize: 13, marginBottom: 24 }}>Upload your resume PDF — AI will auto-fill your profile below.</p>
+          <CandidateProfile user={user} myData={myData} refresh={refreshAll} />
         </div>
       )}
     </div>

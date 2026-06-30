@@ -34,11 +34,12 @@ function EmployerDashboard({ user, logout }) {
   const [extracting,   setExtracting]   = useState(false);
   const [saving,       setSaving]       = useState(false);
   const [pdfKeywords,  setPdfKeywords]  = useState([]);
-  const [autoFilled,   setAutoFilled]   = useState([]);  // track auto-filled fields
+  const [autoFilled,   setAutoFilled]   = useState([]);
   const [applications, setApplications] = useState([]);
   const [loadingApps,  setLoadingApps]  = useState(false);
   const [lastRefresh,  setLastRefresh]  = useState(null);
   const [newAppBadge,  setNewAppBadge]  = useState(false);
+  const [deletingId,   setDeletingId]   = useState(null);
   const prevCount      = useRef(0);
   const timer          = useRef(null);
 
@@ -101,10 +102,8 @@ function EmployerDashboard({ user, logout }) {
       const res  = await fetch(`${BASE}/upload-job-pdf`, { method: "POST", body: fd });
       const data = await res.json();
       if (res.ok) {
-        // Track which fields got auto-filled
         const filled = [];
         const updates = {};
-
         const fields = [
           ["jobTitle", data.jobTitle], ["companyName", data.companyName],
           ["location", data.location], ["salary", data.salary],
@@ -112,14 +111,9 @@ function EmployerDashboard({ user, logout }) {
           ["companyDescription", data.companyDescription],
           ["benefits", data.benefits], ["jobDescription", data.jobDescription],
         ];
-
         fields.forEach(([key, val]) => {
-          if (val && val.trim()) {
-            updates[key] = val.trim();
-            filled.push(key);
-          }
+          if (val && val.trim()) { updates[key] = val.trim(); filled.push(key); }
         });
-
         setForm(prev => ({ ...prev, ...updates }));
         setAutoFilled(filled);
         setPdfKeywords(data.keywords || []);
@@ -163,9 +157,20 @@ function EmployerDashboard({ user, logout }) {
     } catch (err) { console.log(err); }
   };
 
+  /* Delete an application from the inbox entirely */
+  const deleteApplication = async (appId) => {
+    if (!window.confirm("Delete this application? This cannot be undone.")) return;
+    setDeletingId(appId);
+    try {
+      await fetch(`${BASE}/application/${appId}`, { method: "DELETE" });
+      setApplications(prev => prev.filter(a => a._id !== appId));
+      prevCount.current = Math.max(0, prevCount.current - 1);
+    } catch { alert("Delete failed ❌"); }
+    setDeletingId(null);
+  };
+
   const scoreColor = (s) => s >= 70 ? "#34d399" : s >= 50 ? "#60a5fa" : s >= 30 ? "#fbbf24" : "#9ca3af";
 
-  // Helper to show auto-filled badge on field
   const fieldLabel = (key, label) => (
     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
       <label style={{ ...S.label, margin: 0 }}>{label}</label>
@@ -224,7 +229,6 @@ function EmployerDashboard({ user, logout }) {
                   )}
                 </div>
 
-                {/* Section 1: Basic Info */}
                 <div style={{ marginBottom: 20 }}>
                   <div style={S.sectionLabel}>📋 Basic Information</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
@@ -269,7 +273,6 @@ function EmployerDashboard({ user, logout }) {
                   </div>
                 </div>
 
-                {/* Section 2: PDF Upload + Job Description */}
                 <div style={{ marginBottom: 20 }}>
                   <div style={S.sectionLabel}>📄 Job Description</div>
                   <div style={{ marginBottom: 14 }}>
@@ -301,7 +304,6 @@ function EmployerDashboard({ user, logout }) {
                       <input type="file" accept=".pdf" style={{ display: "none" }} onChange={e => { if (e.target.files[0]) handlePdfUpload(e.target.files[0]); }} />
                     </label>
 
-                    {/* Extracted keywords */}
                     {pdfKeywords.length > 0 && (
                       <div style={{ marginTop: 12, background: "#0f172a", border: "1px solid #1f2937", borderRadius: 10, padding: "12px 14px" }}>
                         <div style={{ fontSize: 11, color: "#475569", fontWeight: 600, textTransform: "uppercase", marginBottom: 8 }}>🔑 Extracted Keywords ({pdfKeywords.length}) — used for matching</div>
@@ -319,7 +321,6 @@ function EmployerDashboard({ user, logout }) {
                   </div>
                 </div>
 
-                {/* Section 3: Company & Benefits */}
                 <div style={{ marginBottom: 24 }}>
                   <div style={S.sectionLabel}>🏢 Company & Benefits</div>
                   <div style={{ marginBottom: 14 }}>
@@ -358,7 +359,6 @@ function EmployerDashboard({ user, logout }) {
               </div>
             )}
 
-            {/* JOB CARDS */}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {jobs.map(job => (
                 <div key={job._id} style={S.card}>
@@ -431,6 +431,7 @@ function EmployerDashboard({ user, logout }) {
                     color:  app.status === "accepted" ? "#34d399" : app.status === "rejected" ? "#f87171" : "#60a5fa",
                     border: app.status === "accepted" ? "rgba(16,185,129,0.3)"  : app.status === "rejected" ? "rgba(239,68,68,0.3)"  : "rgba(37,99,235,0.3)",
                   };
+                  const isDeleting = deletingId === app._id;
                   return (
                     <div key={i} style={S.card}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
@@ -459,7 +460,7 @@ function EmployerDashboard({ user, logout }) {
                             </div>
                           )}
                         </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0 }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0, minWidth: 110 }}>
                           {app.status === "pending" && (
                             <>
                               <button onClick={() => updateStatus(app._id, "accepted")} style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>✓ Accept</button>
@@ -469,6 +470,9 @@ function EmployerDashboard({ user, logout }) {
                           {app.status !== "pending" && (
                             <button onClick={() => updateStatus(app._id, "pending")} style={{ background: "#1e293b", color: "#94a3b8", border: "1px solid #334155", borderRadius: 8, padding: "8px 16px", fontSize: 12, cursor: "pointer" }}>↩ Reset</button>
                           )}
+                          <button onClick={() => deleteApplication(app._id)} disabled={isDeleting} style={{ background: "rgba(239,68,68,0.08)", color: "#f87171", border: "1px solid rgba(239,68,68,0.15)", borderRadius: 8, padding: "8px 16px", fontSize: 12, cursor: "pointer", opacity: isDeleting ? 0.6 : 1 }}>
+                            {isDeleting ? "..." : "🗑️ Delete"}
+                          </button>
                         </div>
                       </div>
                     </div>
